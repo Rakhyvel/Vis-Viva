@@ -24,7 +24,12 @@ use nalgebra_glm::{vec2, vec3, vec4, DVec3, I32Vec2, Vec2, Vec3};
 use sdl2::keyboard::Scancode;
 
 use crate::{
-    astro::{epoch::EphemerisTime, maneuver::sphere_of_influence, state::State, units::SUN_MU},
+    astro::{
+        epoch::EphemerisTime,
+        maneuver::sphere_of_influence,
+        state::State,
+        units::{EARTH_RADII_PER_AU, KM_PER_EARTH_RADIUS, SUN_MU},
+    },
     components::{
         craft::{
             replace_line_path, spawn_orbiting_craft, AssociatedEntity, Command, Payload, Stage,
@@ -1593,7 +1598,41 @@ impl Gameplay {
         let body = self.world.get::<&Body>(selected).unwrap();
         let inventory = self.world.get::<&PartInventory>(selected).unwrap();
 
-        let rows = [
+        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
+
+        if let Ok(parent) = self.world.get::<&Parent>(selected) {
+            let state = self.world.get::<&State>(selected).unwrap();
+            let parent_body = self.world.get::<&Body>(parent.id).unwrap();
+
+            let orbits_star = self.world.get::<&Parent>(parent.id).is_err();
+            let dist = |er: f64| {
+                if orbits_star {
+                    format!("{:.2} AU", er / EARTH_RADII_PER_AU)
+                } else {
+                    format!("{:.0} km", er * KM_PER_EARTH_RADIUS)
+                }
+            };
+
+            let (apo, peri) = state.apsides(parent_body.mu);
+            let ecc = state.ecc(parent_body.mu);
+            let inc = state.inclination();
+
+            let orbit_rows = [
+                ("APOAPSIS", apo.map_or("-".into(), dist)),
+                ("PERIAPSIS", dist(peri)),
+                ("ECCENTRICITY", format!("{:.3}", ecc)),
+                ("INCLINATION", format!("{:.1} deg", inc.to_degrees())),
+            ];
+
+            widgets.extend(
+                orbit_rows
+                    .iter()
+                    .map(|(k, v)| self.stat_row(k, v.to_string(), app)),
+            );
+            widgets.push(Box::new(HRule::new(STYLE.border, 1.0, WIDTH)));
+        }
+
+        let body_rows = [
             // TODO: Support earth symbol and exponents in apricot's font cache
             ("RADIUS", format!("{:.1} ER", body.body_radius)),
             ("MASS", format!("{:.3} EM", body.mass())),
@@ -1609,10 +1648,11 @@ impl Gameplay {
         // let state = self.world.get::<&State>(selected).unwrap();
         // Know: name, radius, mass, density, orbital radius, rotation in hours
         // Have to find: atmos press, temp, core mass fraction, magnetic field
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = rows
-            .iter()
-            .map(|(k, v)| self.start_row(k, v.to_string(), app))
-            .collect();
+        widgets.extend(
+            body_rows
+                .iter()
+                .map(|(k, v)| self.stat_row(k, v.to_string(), app)),
+        );
 
         // Extend with inventory info
         widgets.extend(inventory.parts.iter().filter_map(|(part_id, quantity)| {
@@ -1675,7 +1715,7 @@ impl Gameplay {
         out
     }
 
-    fn start_row(&self, key: &str, value: String, app: &App) -> Box<dyn Widget<CommandMessages>> {
+    fn stat_row(&self, key: &str, value: String, app: &App) -> Box<dyn Widget<CommandMessages>> {
         let font = app.renderer.get_font_id_from_name("font").unwrap();
         let font_small = app
             .renderer

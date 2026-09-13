@@ -66,8 +66,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         * mark some parts as un-fabricatable (ilmenite, station core) and don't list them
         * fabricator shows power draw rate, completion date, and days-until-completion
     - [ ] lose the game if the station dies
-    - [ ] make linepaths participate in occlusion again, maybe make them white for bodies, blue for craft?
-    - [ ] make linepaths relative to their arclength? (esp for hyperbolic and parabolic!)
+    - [ ] make linepaths participate in occlusion again
 - [ ] Science
     - [ ] body rotation, axial tilt
         - allows polar mapping probes to actually exist

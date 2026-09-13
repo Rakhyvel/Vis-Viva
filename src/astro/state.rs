@@ -271,6 +271,32 @@ impl State {
         e_vec.norm()
     }
 
+    /// Get the inclination from the +Z axis, in radians
+    pub fn inclination(&self) -> f64 {
+        // find angular momentum vec
+        let h_vec = self.r.cross(&self.v);
+        let h_mag = h_vec.norm();
+
+        if h_mag == 0.0 {
+            return 0.0;
+        }
+
+        // assume +z is the axis
+        let cos_i = (h_vec.z / h_mag).clamp(-1.0, 1.0);
+
+        cos_i.acos()
+    }
+
+    /// Get the (apoapsis, periapsis), in ER
+    pub fn apsides(&self, mu: f64) -> (Option<f64>, f64) {
+        let h = self.r.cross(&self.v).norm();
+        let p = h * h / mu;
+        let e = self.ecc(mu);
+        let peri = p / (1.0 + e);
+        let apo = (e < 1.0).then(|| p / (1.0 - e));
+        (apo, peri)
+    }
+
     pub fn true_anomaly(&self, mu: f64) -> f64 {
         let r = self.r;
         let v = self.v;
