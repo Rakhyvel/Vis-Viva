@@ -55,12 +55,11 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
             x What part is complete? What were you building?
         - [x] event list on left side, shows what's next, what's paused
         - [x] scissor timeline so that dates dont draw off the side
-    - [ ] better craft info
-        * tell me the orbital elements for a craft/body
-        * tell me the TOF, and how long until burns. And tell me when I arrive
-        * tell me what dv each burn costs
-        * tell me my TWR ratio for landing and launching (this should be a requirement)
-        * tell me in the craft's mission where its going! I forgot!
+    - [x] better craft info
+        x tell me the orbital elements for a craft/body
+        x tell how long until burns
+        x tell me what dv each burn costs
+        x tell me in the craft's mission where its going! I forgot!
     - [ ] better fabrication
         * list byproducts, gray out fully if a part is unbuildbale, or if we have 0 in the inventory
         * mark some parts as un-fabricatable (ilmenite, station core) and don't list them
@@ -146,6 +145,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         * Greenhouse: CO2 + H2O + Energy -> Food + O2 (composes maybe too well with methalox fuel cell?)
 - [ ] Game saves and loading
 - [ ] Misc stuff
+    - [ ] events should give countdown and absolute datetime
     - [ ] timeline zoom (maybe by dragging the baseline?)
     - [ ] ability to ignore/subscribe to events (like infos)
     - [ ] combined mission planner

@@ -32,7 +32,8 @@ use crate::{
     },
     components::{
         craft::{
-            replace_line_path, spawn_orbiting_craft, AssociatedEntity, Command, Payload, Stage,
+            replace_line_path, spawn_orbiting_craft, AssociatedEntity, Command, Payload,
+            ScheduledBurn, Stage,
         },
         factory::{projected_completion, Factory},
         inventory::PartInventory,
@@ -536,7 +537,7 @@ impl Scene for Gameplay {
         }
 
         // Update GUI stuff
-        let cal = format!("25 {} 0000", self.current_et.get().short_month_name());
+        let cal = self.current_et.get().short_date();
         if *self.calendar_string.borrow() != cal {
             *self.calendar_string.borrow_mut() = cal;
         }
@@ -1152,8 +1153,7 @@ impl Gameplay {
             starbox: Starbox::new(9000, vec3(1.0, 2.0, 4.0), 0.4),
         };
 
-        *retval.calendar_string.borrow_mut() =
-            format!("25 {} 0000", EphemerisTime::epoch().short_month_name());
+        *retval.calendar_string.borrow_mut() = retval.current_et.get().short_date();
 
         retval.sync_panel(app);
 
@@ -1465,60 +1465,34 @@ impl Gameplay {
             vec![Box::new(Label::new("MISSION").font(font_small_bold, app))];
 
         if let Some(command) = &craft.command {
-            if craft.command_scheduled {
-                widgets.push(Box::new(
-                    Label::new(command.label().to_uppercase())
-                        .font(font_small_bold, app)
-                        .color(STYLE.accent),
-                ));
-                for (burn_label, _burn_purpose, et) in command.burn_schedule() {
-                    let done = self.current_et.get() >= et;
-                    widgets.push(Box::new(
-                        Container::new(vec![
-                            Box::new(
-                                Label::new(burn_label)
-                                    .font(font_small_bold, app)
-                                    .color(if done { STYLE.positive } else { STYLE.text }),
-                            ),
-                            Box::new(Label::new(et.as_calendar()).font(font, app).color(if done {
-                                STYLE.positive
-                            } else {
-                                STYLE.text_muted
-                            })),
-                        ])
-                        .flow(Flow::Vertical)
-                        .border(STYLE.border, 1.0)
-                        .fixed_width(vec2(WIDTH, 10.0))
-                        .padding(vec2(8.0, 8.0)),
-                    ));
-                }
+            let (verb, target) = command.title_parts();
+            let name = self
+                .world
+                .get::<&SceneObject>(target)
+                .ok()
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| "???".into());
+
+            let title = format!("{verb} {name}").to_uppercase();
+
+            let header = if craft.command_scheduled {
+                title
             } else {
-                widgets.push(Box::new(
-                    Label::new(format!("{} - QUEUED", command.label().to_uppercase()))
-                        .font(font_small_bold, app)
-                        .color(STYLE.accent),
-                ));
-                for (burn_label, _burn_purpose, et) in command.burn_schedule() {
-                    let done = self.current_et.get() >= et;
-                    widgets.push(Box::new(
-                        Container::new(vec![
-                            Box::new(
-                                Label::new(burn_label)
-                                    .font(font_small_bold, app)
-                                    .color(if done { STYLE.positive } else { STYLE.text }),
-                            ),
-                            Box::new(Label::new(et.as_calendar()).font(font, app).color(if done {
-                                STYLE.positive
-                            } else {
-                                STYLE.text_muted
-                            })),
-                        ])
-                        .flow(Flow::Vertical)
-                        .border(STYLE.border, 1.0)
-                        .fixed_width(vec2(WIDTH, 10.0))
-                        .padding(vec2(8.0, 8.0)),
-                    ));
-                }
+                format!("{} - QUEUED", title)
+            };
+            widgets.push(Box::new(
+                Label::new(header)
+                    .font(font_small_bold, app)
+                    .color(STYLE.accent),
+            ));
+
+            for burn in command.burn_schedule() {
+                let card = self.burn_card(&burn, app);
+                widgets.extend(card.widgets);
+                out.bindings.extend(card.bindings);
+            }
+
+            if !craft.command_scheduled {
                 widgets.push(Box::new(
                     Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Cancel Mission")
                         .use_style(&STYLE)
@@ -1582,6 +1556,79 @@ impl Gameplay {
         }
 
         out.widgets = widgets;
+        out
+    }
+
+    fn burn_card(&self, burn: &ScheduledBurn, app: &App) -> Section {
+        const WIDTH: f32 = 280.0;
+        let font = app.renderer.get_font_id_from_name("font").unwrap();
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+
+        let now = self.current_et.get();
+        let done = now >= burn.t();
+        let (title_color, date_color) = if done {
+            (STYLE.positive, STYLE.positive)
+        } else {
+            (STYLE.text, STYLE.text_muted)
+        };
+
+        let countdown = Rc::new(RefCell::new(String::new()));
+
+        let mut out = Section::default();
+        out.push(
+            Container::new(vec![
+                Box::new(
+                    Container::new(vec![
+                        Box::new(
+                            Label::new(burn.desc)
+                                .font(font_small_bold, app)
+                                .color(title_color),
+                        ),
+                        Box::new(
+                            Label::new(format!("{:.0} m/s", burn.dv))
+                                .font(font_small_bold, app)
+                                .color(title_color),
+                        ),
+                    ])
+                    .flow(Flow::Horizontal)
+                    .justify(Justify::SpaceBetween)
+                    .padding(Vec2::zeros())
+                    .fixed_width(vec2(WIDTH - 16.0, 0.0)),
+                ),
+                Box::new(
+                    Label::new(burn.t().as_calendar())
+                        .font(font, app)
+                        .color(date_color),
+                ),
+                Box::new(
+                    Label::bound(countdown.clone())
+                        .font(font, app)
+                        .color(date_color),
+                ),
+            ])
+            .border(STYLE.border, 1.0)
+            .fixed_width(vec2(WIDTH, 0.0))
+            .padding(vec2(8.0, 8.0)),
+        );
+
+        let current_et = self.current_et.clone();
+        out.bindings.push(Binding::new({
+            let burn_t = burn.t();
+            move |_world| {
+                let now = current_et.get();
+                let s = if now >= burn_t {
+                    "DONE".into()
+                } else {
+                    format!("T- {}", (burn_t - now).short_duration())
+                };
+                if *countdown.borrow() != s {
+                    *countdown.borrow_mut() = s;
+                }
+            }
+        }));
         out
     }
 
@@ -2090,13 +2137,7 @@ impl Gameplay {
                 let amount = resource_store_amount(world, module, et.get());
                 let rate = station_resource_amount_flow(world, station, t.resource, true);
 
-                let days = if rate < 0.0 {
-                    Some(amount / -rate / 86400.0)
-                } else if rate > 0.0 && amount < t.capacity {
-                    Some((t.capacity - amount) / rate / 86400.0)
-                } else {
-                    None
-                };
+                let until = |secs: f32| EphemerisTime::from_secs(secs as f64).short_duration();
 
                 let (unit, dunit) = t.resource.presentation_units();
                 let (scale, dscale) = t.resource.presentation_scalars();
@@ -2118,16 +2159,18 @@ impl Gameplay {
                         dunit
                     );
                     mass_percentage.set(m / capacity);
-                    *time_to_zero.borrow_mut() = match days {
-                        _ if m == 0.0 => String::from("Empty"),
-                        Some(d) if mdot < 0.0 => format!("{:.1} days until empty", d),
-                        Some(d) if mdot > 0.0 => format!("{:.1} days until full", d),
-                        Some(_) => unreachable!("days shouldnt be Some if mdot is 0.0"),
-                        None if amount >= t.capacity && rate > 0.0 => {
-                            String::from("Full - venting")
-                        }
-                        None if amount >= t.capacity => String::from("Full"),
-                        None => String::from("Stable"),
+                    *time_to_zero.borrow_mut() = if m == 0.0 {
+                        "Empty".into()
+                    } else if rate < 0.0 {
+                        format!("Empty in {}", until(amount / -rate))
+                    } else if rate > 0.0 && amount < t.capacity {
+                        format!("Full in {}", until((t.capacity - amount) / rate))
+                    } else if rate > 0.0 {
+                        "Full - venting".into()
+                    } else if amount >= t.capacity {
+                        "Full".into()
+                    } else {
+                        "Stable".into()
                     };
                 }
             }
@@ -2368,7 +2411,7 @@ impl Gameplay {
 
         for (entity, command) in crafts_with_commands {
             match command {
-                Command::Transfer { to, plan } => {
+                Command::Transfer { to, plan, .. } => {
                     let departure_time = plan.transfer_state.t;
                     let arrival_time = plan.flyby_state.t;
                     let circ_time = plan.circ_state.t;
@@ -2380,50 +2423,36 @@ impl Gameplay {
                     assert!(departure_time < arrival_time);
                     assert!(arrival_time < circ_time);
 
-                    let descs = command.burn_schedule();
                     let sois = command.transition_schedule();
-
-                    self.event_queue.push(
-                        departure_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.transfer_state,
-                            soi_radius: Some(plan.soi_radius * 1.1),
-                            dv: plan.transfer_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-
                     self.event_queue.push(
                         arrival_time,
                         Event::SoiChange {
                             craft: entity,
                             new_parent: to,
                             new_craft_orbit: plan.flyby_state,
-                            new_soi_radius: plan.soi_radius * 3.0,
+                            new_soi_radius: plan.soi_radius,
                             desc: sois[0].0,
                         },
                     );
 
-                    self.event_queue.push(
-                        circ_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.circ_state,
-                            soi_radius: Some(plan.soi_radius * 1.1),
-                            dv: plan.circ_dv,
-                            desc: descs[1].0,
-                            purpose: descs[0].1,
-                        },
-                    );
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
 
                     self.event_queue
                         .push(circ_time, Event::CompleteCommand { craft: entity });
                 }
-                Command::Flyby { to, plan } => {
-                    let old_parent = self.world.get::<&Parent>(entity).unwrap().id;
-
+                Command::Flyby { to, plan, .. } => {
                     let departure_time = plan.transfer_state.t;
                     let arrival_time = plan.flyby_state.t;
                     let exit_time = plan.exit_state.t;
@@ -2435,21 +2464,9 @@ impl Gameplay {
                     assert!(departure_time < arrival_time);
                     assert!(arrival_time < exit_time);
 
-                    let descs = command.burn_schedule();
                     let sois = command.transition_schedule();
 
-                    self.event_queue.push(
-                        departure_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.transfer_state,
-                            soi_radius: Some(plan.soi_radius),
-                            dv: plan.transfer_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-
+                    // Enter SOI event
                     self.event_queue.push(
                         arrival_time,
                         Event::SoiChange {
@@ -2461,54 +2478,56 @@ impl Gameplay {
                         },
                     );
 
+                    // Exit SOI event
                     self.event_queue.push(
-                        exit_time,
+                        arrival_time,
                         Event::SoiChange {
                             craft: entity,
-                            new_parent: old_parent,
+                            new_parent: to,
                             new_craft_orbit: plan.exit_state,
                             new_soi_radius: plan.soi_radius,
                             desc: sois[1].0,
                         },
                     );
 
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
+
                     self.event_queue
                         .push(exit_time, Event::CompleteCommand { craft: entity });
                 }
                 Command::Rendezvous { plan, .. } => {
-                    let departure_time = plan.transfer_state.t;
                     let arrival_time = plan.rendezvous_state.t;
 
-                    let descs = command.burn_schedule();
-
-                    self.event_queue.push(
-                        departure_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.transfer_state,
-                            soi_radius: None,
-                            dv: plan.transfer_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-
-                    self.event_queue.push(
-                        arrival_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.rendezvous_state,
-                            soi_radius: None,
-                            dv: plan.brake_dv,
-                            desc: descs[1].0,
-                            purpose: descs[0].1,
-                        },
-                    );
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
 
                     self.event_queue
                         .push(arrival_time, Event::CompleteCommand { craft: entity });
                 }
-                Command::Escape { to, plan } => {
+                Command::Escape { to, plan, .. } => {
                     let departure_time = plan.escape_burn.t;
                     let arrival_time = plan.exit_state.t;
 
@@ -2517,36 +2536,36 @@ impl Gameplay {
 
                     assert!(departure_time < arrival_time);
 
-                    let descs = command.burn_schedule();
                     let sois = command.transition_schedule();
-
-                    self.event_queue.push(
-                        departure_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.escape_burn,
-                            soi_radius: Some(plan.soi_radius * 1.1),
-                            dv: plan.escape_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-
                     self.event_queue.push(
                         arrival_time,
                         Event::SoiChange {
                             craft: entity,
                             new_parent: to,
                             new_craft_orbit: plan.exit_state,
-                            new_soi_radius: plan.soi_radius * 3.0,
+                            new_soi_radius: plan.soi_radius,
                             desc: sois[0].0,
                         },
                     );
 
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
+
                     self.event_queue
                         .push(arrival_time, Event::CompleteCommand { craft: entity });
                 }
-                Command::Launch { plan } => {
+                Command::Launch { plan, .. } => {
                     let launch_time = plan.launch_burn.t;
                     let circ_time = plan.circ_burn.t;
 
@@ -2558,36 +2577,24 @@ impl Gameplay {
                     self.event_queue
                         .push(launch_time, Event::Launch { craft: entity });
 
-                    let descs = command.burn_schedule();
-
-                    self.event_queue.push(
-                        launch_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.launch_burn,
-                            soi_radius: None,
-                            dv: plan.launch_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-
-                    self.event_queue.push(
-                        circ_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.circ_burn,
-                            soi_radius: None,
-                            dv: plan.circ_dv,
-                            desc: descs[1].0,
-                            purpose: descs[0].1,
-                        },
-                    );
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
 
                     self.event_queue
                         .push(circ_time, Event::CompleteCommand { craft: entity });
                 }
-                Command::Land { plan } => {
+                Command::Land { plan, .. } => {
                     let deorbit_time = plan.deorbit_burn.t;
                     let land_time = plan.landing_burn.t;
 
@@ -2596,30 +2603,20 @@ impl Gameplay {
 
                     assert!(deorbit_time < land_time);
 
-                    let descs = command.burn_schedule();
+                    for burn in command.burn_schedule() {
+                        self.event_queue.push(
+                            burn.t(),
+                            Event::Burn {
+                                craft: entity,
+                                new_orbit: burn.new_orbit,
+                                soi_radius: burn.soi_radius,
+                                dv: burn.dv,
+                                desc: burn.desc,
+                                purpose: burn.purpose,
+                            },
+                        )
+                    }
 
-                    self.event_queue.push(
-                        deorbit_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.deorbit_burn,
-                            soi_radius: None,
-                            dv: plan.deorbit_dv,
-                            desc: descs[0].0,
-                            purpose: descs[0].1,
-                        },
-                    );
-                    self.event_queue.push(
-                        land_time,
-                        Event::Burn {
-                            craft: entity,
-                            new_orbit: plan.landing_burn,
-                            soi_radius: None,
-                            dv: plan.landing_dv,
-                            desc: descs[1].0,
-                            purpose: descs[0].1,
-                        },
-                    );
                     self.event_queue
                         .push(land_time, Event::Land { craft: entity });
                     self.event_queue
@@ -3037,12 +3034,12 @@ impl Gameplay {
             if craft.command_scheduled {
                 continue; // already in the event queue, don't re-add it
             }
-            for (label, burn_purpose, et) in command.burn_schedule() {
+            for burn in command.burn_schedule() {
                 marks.push(TimelineMark {
-                    t: et,
-                    kind: burn_purpose.into(),
+                    t: burn.t(),
+                    kind: burn.purpose.into(),
                     subject: scene_obj.name.clone(),
-                    detail: label.to_string(),
+                    detail: burn.desc.to_string(),
                 });
             }
             for (label, et) in command.transition_schedule() {

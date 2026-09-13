@@ -1,4 +1,7 @@
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::{
+    fmt::format,
+    ops::{Add, AddAssign, Div, Mul, Sub},
+};
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
 
@@ -99,6 +102,38 @@ impl EphemerisTime {
             dt.hour(),
             dt.minute()
         )
+    }
+
+    pub fn short_date(&self) -> String {
+        let dt = self.as_datetime();
+        format!(
+            "{:02} {} {:04}",
+            dt.day(),
+            self.short_month_name(),
+            dt.year(),
+        )
+    }
+
+    /// Compact duration formatting. Negative durations clamp to zero.
+    pub fn short_duration(&self) -> String {
+        let secs = self.as_secs().max(0.0) as i64;
+
+        let (year, day, hour) = (
+            SECONDS_PER_YEAR as i64,
+            SECONDS_PER_DAY as i64,
+            SECONDS_PER_HOUR as i64,
+        );
+
+        let (y, d) = (secs / year, secs % year / day);
+        let (h, m) = (secs % day / hour, secs % hour / 60);
+
+        if y > 0 {
+            format!("{y}y {d}d")
+        } else if d > 0 {
+            format!("{d}d {h:02}h")
+        } else {
+            format!("{h}h {m:02}m")
+        }
     }
 
     pub fn epoch() -> Self {

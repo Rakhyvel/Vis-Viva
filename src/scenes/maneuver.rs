@@ -159,12 +159,31 @@ impl ManeuverKind {
 }
 
 pub enum ManeuverResult {
-    Transfer { to: Entity, plan: TransferPlan },
-    Flyby { to: Entity, plan: FlybyPlan },
-    Rendezvous { plan: RendezvousPlan },
-    Escape { to: Entity, plan: EscapePlan },
-    Land { plan: LandingPlan },
-    Launch { plan: LaunchPlan },
+    Transfer {
+        to: Entity,
+        plan: TransferPlan,
+    },
+    Flyby {
+        to: Entity,
+        plan: FlybyPlan,
+    },
+    Rendezvous {
+        with: Entity,
+        plan: RendezvousPlan,
+    },
+    Escape {
+        to: Entity,
+        from: Entity,
+        plan: EscapePlan,
+    },
+    Land {
+        on: Entity,
+        plan: LandingPlan,
+    },
+    Launch {
+        from: Entity,
+        plan: LaunchPlan,
+    },
 }
 
 impl ManeuverResult {
@@ -174,8 +193,8 @@ impl ManeuverResult {
             ManeuverResult::Flyby { plan, .. } => plan.transfer_dv,
             ManeuverResult::Rendezvous { plan, .. } => plan.transfer_dv + plan.brake_dv,
             ManeuverResult::Escape { plan, .. } => plan.escape_dv,
-            ManeuverResult::Land { plan } => plan.deorbit_dv + plan.landing_dv,
-            ManeuverResult::Launch { plan } => plan.launch_dv + plan.circ_dv,
+            ManeuverResult::Land { plan, .. } => plan.deorbit_dv + plan.landing_dv,
+            ManeuverResult::Launch { plan, .. } => plan.launch_dv + plan.circ_dv,
         }
     }
 
@@ -185,8 +204,8 @@ impl ManeuverResult {
             ManeuverResult::Flyby { plan, .. } => plan.flyby_state.t,
             ManeuverResult::Rendezvous { plan, .. } => plan.rendezvous_state.t,
             ManeuverResult::Escape { plan, .. } => plan.exit_state.t,
-            ManeuverResult::Land { plan } => plan.landing_burn.t,
-            ManeuverResult::Launch { plan } => plan.circ_burn.t,
+            ManeuverResult::Land { plan, .. } => plan.landing_burn.t,
+            ManeuverResult::Launch { plan, .. } => plan.circ_burn.t,
         }
     }
 
@@ -198,10 +217,10 @@ impl ManeuverResult {
         match self {
             ManeuverResult::Transfer { to, plan } => Command::Transfer { to, plan },
             ManeuverResult::Flyby { to, plan } => Command::Flyby { to, plan },
-            ManeuverResult::Rendezvous { plan } => Command::Rendezvous { plan },
-            ManeuverResult::Escape { to, plan } => Command::Escape { to, plan },
-            ManeuverResult::Land { plan } => Command::Land { plan },
-            ManeuverResult::Launch { plan } => Command::Launch { plan },
+            ManeuverResult::Rendezvous { with, plan } => Command::Rendezvous { with, plan },
+            ManeuverResult::Escape { to, from, plan } => Command::Escape { to, from, plan },
+            ManeuverResult::Land { on, plan } => Command::Land { on, plan },
+            ManeuverResult::Launch { from, plan } => Command::Launch { from, plan },
         }
     }
 }
@@ -844,7 +863,7 @@ impl ManeuverModal {
                     depart_dv,
                 )
                 .ok()?;
-                Some(ManeuverResult::Rendezvous { plan })
+                Some(ManeuverResult::Rendezvous { with, plan })
             }
             ManeuverKind::Escape => {
                 let parent_state = world.get::<&State>(parent).unwrap();
@@ -860,6 +879,7 @@ impl ManeuverModal {
                 );
                 Some(ManeuverResult::Escape {
                     to: grandparent.id,
+                    from: parent,
                     plan: plan.ok()?,
                 })
             }
@@ -872,7 +892,7 @@ impl ManeuverModal {
                     target_body.mu,
                 )
                 .ok()?;
-                Some(ManeuverResult::Land { plan })
+                Some(ManeuverResult::Land { on: parent, plan })
             }
             ManeuverKind::Launch => {
                 let landed = world.get::<&Landed>(craft).ok()?;
@@ -889,7 +909,7 @@ impl ManeuverModal {
                     parent_body.mass(),
                 )
                 .ok()?;
-                Some(ManeuverResult::Launch { plan })
+                Some(ManeuverResult::Launch { from: parent, plan })
             }
         }
     }
