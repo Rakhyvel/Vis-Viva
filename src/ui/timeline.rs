@@ -9,7 +9,7 @@ use nalgebra_glm::{vec2, vec4, Vec2, Vec4};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::craft::{BurnPurpose, Command},
+    components::craft::BurnPurpose,
     scenes::events::Event,
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
 };
@@ -205,6 +205,8 @@ impl<Msg: Clone + 'static> Widget<Msg> for Timeline {
             size: vec2(self.rect.size.x, 1.0),
         };
 
+        app.renderer.set_scissor(Some(self.rect));
+
         app.renderer.set_color(self.baseline_color);
         app.renderer.fill_rect(timeline);
 
@@ -298,6 +300,8 @@ impl<Msg: Clone + 'static> Widget<Msg> for Timeline {
         };
         app.renderer.set_color(self.now_color);
         app.renderer.fill_rect(now);
+
+        app.renderer.set_scissor(None);
     }
 
     fn size(&self) -> Vec2 {
