@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use hecs::Entity;
 
-use crate::astro::{epoch::EphemerisTime, state::State};
+use crate::{
+    astro::{epoch::EphemerisTime, state::State},
+    components::craft::BurnPurpose,
+};
 
 #[derive(Clone, Copy)]
 pub enum Event {
@@ -29,6 +32,8 @@ pub enum Event {
         dv: f64,
         /// Basic description of the burn
         desc: &'static str,
+        /// The purpose of this burn
+        purpose: BurnPurpose,
     },
 
     /// At this event, the craft is no longer landed and is in a suborbital trajectory around its parent

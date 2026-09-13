@@ -67,6 +67,13 @@ pub enum Command {
     Land { plan: LandingPlan },
 }
 
+#[derive(Clone, Copy)]
+pub enum BurnPurpose {
+    Maneuver,
+    Landing,
+    Launch,
+}
+
 impl Command {
     pub fn label(&self) -> &'static str {
         match self {
@@ -79,25 +86,43 @@ impl Command {
         }
     }
 
-    pub fn burn_schedule(&self) -> Vec<(&'static str, EphemerisTime)> {
+    pub fn burn_schedule(&self) -> Vec<(&'static str, BurnPurpose, EphemerisTime)> {
         match self {
             Command::Transfer { plan, .. } => vec![
-                ("Departure burn", plan.transfer_state.t),
-                ("Circularization", plan.circ_state.t),
+                (
+                    "Departure burn",
+                    BurnPurpose::Maneuver,
+                    plan.transfer_state.t,
+                ),
+                ("Circularization", BurnPurpose::Maneuver, plan.circ_state.t),
             ],
-            Command::Flyby { plan, .. } => vec![("Departure burn", plan.transfer_state.t)],
+            Command::Flyby { plan, .. } => vec![(
+                "Departure burn",
+                BurnPurpose::Maneuver,
+                plan.transfer_state.t,
+            )],
             Command::Rendezvous { plan, .. } => vec![
-                ("Departure burn", plan.transfer_state.t),
-                ("Braking burn", plan.rendezvous_state.t),
+                (
+                    "Departure burn",
+                    BurnPurpose::Maneuver,
+                    plan.transfer_state.t,
+                ),
+                (
+                    "Braking burn",
+                    BurnPurpose::Maneuver,
+                    plan.rendezvous_state.t,
+                ),
             ],
-            Command::Escape { plan, .. } => vec![("Escape burn", plan.escape_burn.t)],
+            Command::Escape { plan, .. } => {
+                vec![("Escape burn", BurnPurpose::Maneuver, plan.escape_burn.t)]
+            }
             Command::Land { plan } => vec![
-                ("Deorbit burn", plan.deorbit_burn.t),
-                ("Landing", plan.landing_burn.t),
+                ("Deorbit burn", BurnPurpose::Maneuver, plan.deorbit_burn.t),
+                ("Landing", BurnPurpose::Landing, plan.landing_burn.t),
             ],
             Command::Launch { plan } => vec![
-                ("Launch", plan.launch_burn.t),
-                ("Circularization", plan.circ_burn.t),
+                ("Launch", BurnPurpose::Launch, plan.launch_burn.t),
+                ("Circularization", BurnPurpose::Maneuver, plan.circ_burn.t),
             ],
         }
     }

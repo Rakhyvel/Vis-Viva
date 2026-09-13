@@ -1466,7 +1466,7 @@ impl Gameplay {
                         .font(font_small_bold, app)
                         .color(STYLE.accent),
                 ));
-                for (burn_label, et) in command.burn_schedule() {
+                for (burn_label, _burn_purpose, et) in command.burn_schedule() {
                     let done = self.current_et.get() >= et;
                     widgets.push(Box::new(
                         Container::new(vec![
@@ -1493,7 +1493,7 @@ impl Gameplay {
                         .font(font_small_bold, app)
                         .color(STYLE.accent),
                 ));
-                for (burn_label, et) in command.burn_schedule() {
+                for (burn_label, _burn_purpose, et) in command.burn_schedule() {
                     let done = self.current_et.get() >= et;
                     widgets.push(Box::new(
                         Container::new(vec![
@@ -2351,6 +2351,7 @@ impl Gameplay {
                             soi_radius: Some(plan.soi_radius * 1.1),
                             dv: plan.transfer_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2373,6 +2374,7 @@ impl Gameplay {
                             soi_radius: Some(plan.soi_radius * 1.1),
                             dv: plan.circ_dv,
                             desc: descs[1].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2404,6 +2406,7 @@ impl Gameplay {
                             soi_radius: Some(plan.soi_radius),
                             dv: plan.transfer_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2446,6 +2449,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.transfer_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2457,6 +2461,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.brake_dv,
                             desc: descs[1].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2483,6 +2488,7 @@ impl Gameplay {
                             soi_radius: Some(plan.soi_radius * 1.1),
                             dv: plan.escape_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2522,6 +2528,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.launch_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2533,6 +2540,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.circ_dv,
                             desc: descs[1].0,
+                            purpose: descs[0].1,
                         },
                     );
 
@@ -2558,6 +2566,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.deorbit_dv,
                             desc: descs[0].0,
+                            purpose: descs[0].1,
                         },
                     );
                     self.event_queue.push(
@@ -2568,6 +2577,7 @@ impl Gameplay {
                             soi_radius: None,
                             dv: plan.landing_dv,
                             desc: descs[1].0,
+                            purpose: descs[0].1,
                         },
                     );
                     self.event_queue
@@ -2987,11 +2997,10 @@ impl Gameplay {
             if craft.command_scheduled {
                 continue; // already in the event queue, don't re-add it
             }
-            let kind: MarkKind = MarkKind::from_command(command);
-            for (label, et) in command.burn_schedule() {
+            for (label, burn_purpose, et) in command.burn_schedule() {
                 marks.push(TimelineMark {
                     t: et,
-                    kind,
+                    kind: burn_purpose.into(),
                     subject: scene_obj.name.clone(),
                     detail: label.to_string(),
                 });

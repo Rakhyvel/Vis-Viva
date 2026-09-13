@@ -9,7 +9,7 @@ use nalgebra_glm::{vec2, vec4, Vec2, Vec4};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::craft::Command,
+    components::craft::{BurnPurpose, Command},
     scenes::events::Event,
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
 };
@@ -69,28 +69,28 @@ pub enum MarkKind {
     Good,
 }
 
+impl From<BurnPurpose> for MarkKind {
+    fn from(p: BurnPurpose) -> Self {
+        match p {
+            BurnPurpose::Maneuver => MarkKind::Burn,
+            BurnPurpose::Landing => MarkKind::Land,
+            BurnPurpose::Launch => MarkKind::Launch,
+        }
+    }
+}
+
 impl MarkKind {
     pub fn from_event(event: &Event) -> Option<Self> {
         match event {
             Event::SoiChange { .. } => Some(MarkKind::SoiChange),
-            Event::Burn { .. } => Some(MarkKind::Burn),
-            Event::Launch { .. } => Some(MarkKind::Launch),
-            Event::Land { .. } => Some(MarkKind::Land),
+            Event::Burn { purpose, .. } => Some((*purpose).into()),
 
             Event::FactoryComplete { .. } => Some(MarkKind::FactoryComplete),
 
+            // The burns for these events already display these
+            Event::Launch { .. } | Event::Land { .. } => None,
+            // Don't show this to the player
             Event::CompleteCommand { .. } => None,
-        }
-    }
-
-    pub fn from_command(command: &Command) -> Self {
-        match command {
-            Command::Transfer { .. }
-            | Command::Flyby { .. }
-            | Command::Escape { .. }
-            | Command::Rendezvous { .. } => MarkKind::Burn,
-            Command::Land { .. } => MarkKind::Land,
-            Command::Launch { .. } => MarkKind::Launch,
         }
     }
 
