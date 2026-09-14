@@ -66,7 +66,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x gray out if 0 in the inventory
         x mark some parts as un-fabricatable (ilmenite, station core) and don't list them
         x fabricator shows power draw rate, completion date, and days-until-completion
-    - [ ] make linepaths participate in occlusion again
+    - [x] make linepaths participate in occlusion again
     - [ ] lose the game if the station dies
 - [ ] Mining && ISRU
     - [x] Ilmetite smelting (just give generic "metal" for MVP)

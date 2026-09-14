@@ -3398,7 +3398,6 @@ impl Gameplay {
                 line.color.w = 0.36606;
                 line.width = 1.0;
             }
-            line.depth_test = false;
 
             line.color.w *= proximity_alphas.get(&entity).unwrap();
 
