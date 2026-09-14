@@ -156,7 +156,7 @@ impl<Msg> Button<Msg> {
 
     pub fn use_style(mut self, style: &Style) -> Self {
         self.text_color = style.text;
-        self.inactive_text_color = style.text_muted;
+        self.inactive_text_color = style.text_disabled;
         self.background_color = style.surface;
         self.inactive_background_color = style.surface_deep;
         self.border = Some((style.border, 1.0));
@@ -168,7 +168,7 @@ impl<Msg> Button<Msg> {
 
     pub fn use_style_accented(mut self, style: &Style) -> Self {
         self.text_color = style.text;
-        self.inactive_text_color = style.text_muted;
+        self.inactive_text_color = style.text_disabled;
         self.background_color = style.accent_surface;
         self.inactive_background_color = style.surface_deep;
         self.border = Some((style.accent, 1.0));
@@ -180,7 +180,7 @@ impl<Msg> Button<Msg> {
 
     pub fn use_style_link(mut self, style: &Style) -> Self {
         self.text_color = style.accent;
-        self.inactive_text_color = style.text_muted;
+        self.inactive_text_color = style.text_disabled;
         self.background_color = vec4(0.0, 0.0, 0.0, 0.0);
         self.inactive_background_color = vec4(0.0, 0.0, 0.0, 0.0);
         self.hovered_color = vec4(0.0, 0.0, 0.0, 0.0);

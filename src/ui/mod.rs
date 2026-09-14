@@ -13,6 +13,7 @@ pub(crate) mod progress_bar;
 pub(crate) mod scroll_container;
 pub(crate) mod shape;
 pub(crate) mod slider;
+pub(crate) mod stat_row;
 pub(crate) mod style;
 pub(crate) mod timeline;
 pub(crate) mod toggle;

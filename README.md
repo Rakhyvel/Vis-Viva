@@ -61,7 +61,9 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x tell me what dv each burn costs
         x tell me in the craft's mission where its going! I forgot!
     - [ ] better fabrication
-        * list byproducts, gray out fully if a part is unbuildbale, or if we have 0 in the inventory
+        x list byproducts
+        x gray out fully if a part is unbuildable
+        x gray out if 0 in the inventory
         * mark some parts as un-fabricatable (ilmenite, station core) and don't list them
         * fabricator shows power draw rate, completion date, and days-until-completion
     - [ ] lose the game if the station dies

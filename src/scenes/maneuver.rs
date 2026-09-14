@@ -165,6 +165,7 @@ pub enum ManeuverResult {
     },
     Flyby {
         to: Entity,
+        from: Entity,
         plan: FlybyPlan,
     },
     Rendezvous {
@@ -216,7 +217,7 @@ impl ManeuverResult {
     pub fn into_command(self) -> Command {
         match self {
             ManeuverResult::Transfer { to, plan } => Command::Transfer { to, plan },
-            ManeuverResult::Flyby { to, plan } => Command::Flyby { to, plan },
+            ManeuverResult::Flyby { to, from, plan } => Command::Flyby { to, from, plan },
             ManeuverResult::Rendezvous { with, plan } => Command::Rendezvous { with, plan },
             ManeuverResult::Escape { to, from, plan } => Command::Escape { to, from, plan },
             ManeuverResult::Land { on, plan } => Command::Land { on, plan },
@@ -841,7 +842,11 @@ impl ManeuverModal {
                     depart_dv,
                 )
                 .ok()?;
-                Some(ManeuverResult::Flyby { to, plan })
+                Some(ManeuverResult::Flyby {
+                    to,
+                    from: parent,
+                    plan,
+                })
             }
             ManeuverKind::Rendezvous => {
                 let with = self.selected_destination?;

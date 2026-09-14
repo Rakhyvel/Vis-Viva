@@ -15,7 +15,8 @@ pub struct Style {
 
     // Text
     pub text: Vec4,
-    pub text_muted: Vec4,
+    pub text_secondary: Vec4,
+    pub text_disabled: Vec4,
 
     // Accents
     pub accent_surface: Vec4,
@@ -43,8 +44,9 @@ pub static ref STYLE: Style = Style {
     border_subtle:  oklch(0.33, 0.0070 * C, H, 1.0),
     border:         oklch(0.38, 0.0100 * C, H, 1.0),
 
-    text_muted:     oklch(0.62, 0.008 * C, H, 1.0),
     text:           oklch(0.95, 0.004 * C, H, 1.0),
+    text_secondary: oklch(0.72, 0.008 * C, H, 1.0),
+    text_disabled:  oklch(0.50, 0.006 * C, H, 1.0),
 
     accent_surface:       oklch(0.40, 0.110 * A_C, H, 0.97),
     accent_surface_hover: oklch(0.36, 0.130 * A_C, H, 0.98),

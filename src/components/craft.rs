@@ -69,6 +69,7 @@ pub enum Command {
     },
     Flyby {
         to: Entity,
+        from: Entity,
         plan: FlybyPlan,
     },
     Rendezvous {

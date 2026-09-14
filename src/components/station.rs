@@ -158,6 +158,7 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
     (store.amount + share * dt_secs).clamp(0.0, store.capacity)
 }
 
+/// Returns (stored, capacity) of a given resource at a given time
 pub fn station_resource_totals(
     world: &World,
     station: Entity,

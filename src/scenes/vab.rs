@@ -220,7 +220,7 @@ impl VabUi {
                 Container::new(vec![Box::new(
                     Label::new("No payload")
                         .font(font, app)
-                        .color(STYLE.text_muted),
+                        .color(STYLE.text_disabled),
                 )])
                 .border(STYLE.border, 1.0)
                 .fixed_width(vec2(WIDTH, 10.0))
@@ -269,7 +269,7 @@ impl VabUi {
                 Container::new(vec![Box::new(
                     Label::new("No stages")
                         .font(font, app)
-                        .color(STYLE.text_muted),
+                        .color(STYLE.text_disabled),
                 )])
                 .border(STYLE.border, 1.0)
                 .min_size(Vec2::new(WIDTH, 300.0))

@@ -9,9 +9,10 @@ use crate::{
     astro::epoch::EphemerisTime,
     components::{
         body::Parent,
-        factory::{cost_status, CostLine, Factory},
-        inventory::PartInventory,
+        factory::{cost_status, CostKind, CostLine, Factory},
+        inventory::{self, PartInventory},
         parts::{PartDef, PartRegistry},
+        station::{station_resource_totals, Resource},
     },
     container,
     ui::{
@@ -20,7 +21,9 @@ use crate::{
         hrule::HRule,
         label::Label,
         modal::Modal,
+        progress_bar::ProgressBar,
         scroll_container::ScrollContainer,
+        stat_row::stat_row,
         style::STYLE,
         widget::{recv_msgs, Widget},
     },
@@ -89,7 +92,6 @@ impl FabricatorUi {
             .renderer
             .get_font_id_from_name("font-small-bold")
             .unwrap();
-        let font: FontId = app.renderer.get_font_id_from_name("font").unwrap();
 
         self.fabricator = Some(fabricator);
 
@@ -106,12 +108,17 @@ impl FabricatorUi {
         let mut cards: Vec<Box<dyn Widget<FabricatorMessages>>> = Vec::new();
         for part in parts {
             let lines = cost_status(world, station, &part.cost, registry, t);
-            cards.push(Box::new(
-                self.build_card(part, &lines, registry, pending, app),
-            ));
+            cards.push(Box::new(self.build_card(
+                part,
+                &lines,
+                &part.byproducts,
+                registry,
+                pending,
+                app,
+            )));
         }
 
-        const INVENTROY_W: f32 = 134.0;
+        const INVENTORY_W: f32 = 134.0;
         const CARD_W: f32 = 300.0;
         const HEIGHT: f32 = 400.0;
 
@@ -119,24 +126,71 @@ impl FabricatorUi {
             .use_style(&STYLE)
             .on_click(FabricatorMessages::Close);
 
-        // TODO: List the resources too
-        let inventory = Box::new(ScrollContainer::new(
-            vec2(INVENTROY_W, HEIGHT),
-            Box::new(
-                Container::new(
-                    registry
-                        .all()
-                        .map(|part| {
-                            let amt = part_inventory.quantity(part.id_hash());
+        let mut inventory: Vec<Box<dyn Widget<FabricatorMessages>>> = Vec::new();
+        inventory.push(Box::new(
+            Label::new("RESOURCES")
+                .font(font_small_bold, app)
+                .color(STYLE.text),
+        ));
 
-                            Box::new(Label::new(format!("{} x {}", part.name, amt)).font(font, app))
-                                as Box<dyn Widget<FabricatorMessages>>
-                        })
-                        .collect(),
+        for r in Resource::ALL {
+            let (amt, cap) = station_resource_totals(world, station, *r, t);
+            if cap <= 0.0 {
+                continue; // the station has no store for this
+            }
+
+            let (unit, _) = r.presentation_units();
+            let (scale, _) = r.presentation_scalars();
+            let color = if amt > 0.0 {
+                STYLE.text
+            } else {
+                STYLE.text_disabled
+            };
+
+            inventory.push(Box::new(
+                container!(
+                    stat_row(
+                        &r.long_name().to_uppercase(),
+                        format!("{:.0} {unit}", amt * scale),
+                        color,
+                        INVENTORY_W,
+                        app,
+                    ),
+                    ProgressBar::new(vec2(INVENTORY_W, 4.0))
+                        .use_style(&STYLE)
+                        .progress(amt / cap),
                 )
                 .padding(Vec2::zeros())
-                .gap(8.0),
-            ),
+                .gap(2.0),
+            ));
+        }
+
+        inventory.push(Box::new(HRule::new(STYLE.border_subtle, 1.0, INVENTORY_W)));
+        inventory.push(Box::new(
+            Label::new("PARTS")
+                .font(font_small_bold, app)
+                .color(STYLE.text),
+        ));
+
+        for part in registry.all() {
+            let amt = part_inventory.quantity(part.id_hash());
+
+            inventory.push(Box::new(stat_row(
+                &part.name,
+                format!("{amt}"),
+                if amt > 0 {
+                    STYLE.text
+                } else {
+                    STYLE.text_disabled
+                },
+                INVENTORY_W,
+                app,
+            )))
+        }
+
+        let inventory_bar = Box::new(ScrollContainer::new(
+            vec2(INVENTORY_W, HEIGHT),
+            Box::new(Container::new(inventory).padding(Vec2::zeros()).gap(8.0)),
         ));
 
         let parts = Box::new(ScrollContainer::new(
@@ -147,7 +201,7 @@ impl FabricatorUi {
         let children: Vec<Box<dyn Widget<FabricatorMessages>>> = vec![
             Box::new(Label::new("FABRICATOR").font(font_small_bold, app)),
             Box::new(HRule::new(STYLE.border, 1.0, CARD_W)),
-            Box::new(Container::new(vec![inventory, parts]).flow(Flow::Horizontal)),
+            Box::new(Container::new(vec![inventory_bar, parts]).flow(Flow::Horizontal)),
             Box::new(HRule::new(STYLE.border, 1.0, CARD_W)),
             Box::new(close),
         ];
@@ -167,6 +221,7 @@ impl FabricatorUi {
         &self,
         part: &PartDef,
         lines: &[CostLine],
+        byproducts: &[(Resource, f32)],
         registry: &PartRegistry,
         pending: Option<u64>,
         app: &App,
@@ -181,6 +236,12 @@ impl FabricatorUi {
         let affordable = lines.iter().all(|l| l.have >= l.need);
         let queued = pending == Some(id);
 
+        let text_color = if affordable {
+            STYLE.text
+        } else {
+            STYLE.text_disabled
+        };
+
         const INNER_W: f32 = 280.0;
 
         let f = app.renderer.get_font_from_id(font).unwrap();
@@ -188,7 +249,7 @@ impl FabricatorUi {
         let desc_lines: Vec<Box<dyn Widget<FabricatorMessages>>> = wrap(&part.desc, INNER_W, &f)
             .into_iter()
             .map(|l| {
-                Box::new(Label::new(l).font(font, app).color(STYLE.text)) as Box<dyn Widget<_>>
+                Box::new(Label::new(l).font(font, app).color(text_color)) as Box<dyn Widget<_>>
             })
             .collect();
 
@@ -196,39 +257,64 @@ impl FabricatorUi {
             Box::new(
                 Label::new(part.name.clone())
                     .font(font_bold, app)
-                    .color(STYLE.text),
+                    .color(text_color),
             ),
             Box::new(Container::new(desc_lines).padding(Vec2::zeros()).gap(0.0)),
             Box::new(HRule::new(STYLE.border, 1.0, INNER_W)),
         ];
 
+        let mut inputs_rows: Vec<Box<dyn Widget<FabricatorMessages>>> = vec![];
         for line in lines {
+            let unit = match line.kind {
+                CostKind::Part(..) => "",
+                CostKind::Resource(..) => " kg",
+            };
+
+            let have_text = if line.need > line.have {
+                format!(" (have {}{})", line.have, unit)
+            } else {
+                String::new()
+            };
+
             let text = match line.kind {
-                crate::components::factory::CostKind::Part(part_id) => {
+                CostKind::Part(part_id) => {
                     let name = registry
                         .get(part_id)
                         .map(|p| p.name.as_str())
                         .unwrap_or("???");
-                    format!("{:.0}x {}", line.need, name)
+                    format!("{:.0}x {}{}", line.need, name, have_text)
                 }
-                crate::components::factory::CostKind::Resource(r) => {
-                    format!("{:.0} kg {}", line.need, r.long_name())
+                CostKind::Resource(r) => {
+                    format!("{:.0} kg {}{}", line.need, r.long_name(), have_text)
                 }
             };
-            widgets.push(Box::new(Label::new(text).font(font, app).color(
+            inputs_rows.push(Box::new(Label::new(text).font(font, app).color(
                 if line.have >= line.need {
                     STYLE.text
                 } else {
-                    STYLE.text_muted
+                    STYLE.negative
                 },
             )));
         }
 
-        widgets.push(Box::new(
-            Label::new(format!("{:.0} kWh", part.cost.energy_joules / 3.6e6))
+        inputs_rows.push(Box::new(
+            Label::new(format!("{:.0} kWh Energy", part.cost.energy_joules / 3.6e6))
                 .font(font, app)
                 .color(STYLE.text),
         ));
+        widgets.push(Box::new(section("INPUTS", inputs_rows, &font_bold, app)));
+
+        if !byproducts.is_empty() {
+            let mut rows: Vec<Box<dyn Widget<FabricatorMessages>>> = vec![];
+            for (byproduct, amt) in byproducts {
+                rows.push(Box::new(
+                    Label::new(format!("+{:.0} kg {}", amt, byproduct.long_name()))
+                        .font(font, app)
+                        .color(STYLE.text),
+                ));
+            }
+            widgets.push(Box::new(section("BYPRODUCTS", rows, &font_bold, app)));
+        }
 
         widgets.push(Box::new(
             Button::text(vec2(280.0, 30.0), if queued { "QUEUED" } else { "BUILD" })
@@ -246,6 +332,21 @@ impl FabricatorUi {
     pub fn is_shown(&self) -> bool {
         self.modal.is_shown()
     }
+}
+
+fn section(
+    title: &str,
+    rows: Vec<Box<dyn Widget<FabricatorMessages>>>,
+    font_bold: &FontId,
+    app: &App,
+) -> Container<FabricatorMessages> {
+    let mut children: Vec<Box<dyn Widget<FabricatorMessages>>> = vec![Box::new(
+        Label::new(title)
+            .font(*font_bold, app)
+            .color(STYLE.text_secondary),
+    )];
+    children.extend(rows);
+    Container::new(children).padding(Vec2::zeros()).gap(2.0)
 }
 
 fn wrap(text: &str, max_w: f32, font: &Font) -> Vec<String> {

@@ -65,6 +65,7 @@ use crate::{
         progress_bar::ProgressBar,
         scroll_container::ScrollContainer,
         shape::Shape,
+        stat_row::stat_row,
         style::STYLE,
         timeline::{MarkKind, Timeline, TimelineMark},
         toggle::Toggle,
@@ -1369,9 +1370,9 @@ impl Gameplay {
         const WIDTH: f32 = 300.0;
 
         let (subject_color, detail_color) = match (accented, mark.kind) {
-            (true, MarkKind::Critical) => (STYLE.negative, STYLE.text_muted),
-            (true, _) => (STYLE.positive, STYLE.text_muted),
-            (false, _) => (STYLE.text, STYLE.text_muted),
+            (true, MarkKind::Critical) => (STYLE.negative, STYLE.text_secondary),
+            (true, _) => (STYLE.positive, STYLE.text_secondary),
+            (false, _) => (STYLE.text, STYLE.text_secondary),
         };
 
         let left = container!(
@@ -1504,7 +1505,7 @@ impl Gameplay {
             widgets.push(Box::new(
                 Label::new("NO MISSION ASSIGNED")
                     .font(font_small_italic, app)
-                    .color(STYLE.text_muted),
+                    .color(STYLE.text_disabled),
             ));
         }
 
@@ -1572,7 +1573,7 @@ impl Gameplay {
         let (title_color, date_color) = if done {
             (STYLE.positive, STYLE.positive)
         } else {
-            (STYLE.text, STYLE.text_muted)
+            (STYLE.text, STYLE.text_secondary)
         };
 
         let countdown = Rc::new(RefCell::new(String::new()));
@@ -1671,11 +1672,10 @@ impl Gameplay {
                 ("INCLINATION", format!("{:.1} deg", inc.to_degrees())),
             ];
 
-            widgets.extend(
-                orbit_rows
-                    .iter()
-                    .map(|(k, v)| self.stat_row(k, v.to_string(), app)),
-            );
+            widgets.extend(orbit_rows.iter().map(|(k, v)| {
+                Box::new(stat_row(k, v.to_string(), STYLE.text, WIDTH, app))
+                    as Box<dyn Widget<CommandMessages>>
+            }));
             widgets.push(Box::new(HRule::new(STYLE.border, 1.0, WIDTH)));
         }
 
@@ -1695,11 +1695,10 @@ impl Gameplay {
         // let state = self.world.get::<&State>(selected).unwrap();
         // Know: name, radius, mass, density, orbital radius, rotation in hours
         // Have to find: atmos press, temp, core mass fraction, magnetic field
-        widgets.extend(
-            body_rows
-                .iter()
-                .map(|(k, v)| self.stat_row(k, v.to_string(), app)),
-        );
+        widgets.extend(body_rows.iter().map(|(k, v)| {
+            Box::new(stat_row(k, v.to_string(), STYLE.text, WIDTH, app))
+                as Box<dyn Widget<CommandMessages>>
+        }));
 
         // Extend with inventory info
         widgets.extend(inventory.parts.iter().filter_map(|(part_id, quantity)| {
@@ -1760,27 +1759,6 @@ impl Gameplay {
         }
 
         out
-    }
-
-    fn stat_row(&self, key: &str, value: String, app: &App) -> Box<dyn Widget<CommandMessages>> {
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        Box::new(
-            container!(
-                Label::new(key)
-                    .font(font_small, app)
-                    .color(STYLE.text_muted),
-                Label::new(value).font(font, app).color(STYLE.text),
-            )
-            .flow(Flow::Horizontal)
-            .justify(Justify::SpaceBetween)
-            .cross_align(Align::Center)
-            .fixed_width(vec2(280.0, 0.0))
-            .padding(vec2(0.0, 0.0)),
-        )
     }
 
     #[allow(unused)]
@@ -1849,7 +1827,7 @@ impl Gameplay {
                                         .color(if can_afford {
                                             STYLE.text
                                         } else {
-                                            STYLE.text_muted
+                                            STYLE.text_disabled
                                         }),
                                 )])
                                 .flow(Flow::Vertical)
@@ -1950,7 +1928,7 @@ impl Gameplay {
             widgets.push(Box::new(
                 Label::new("No parts available")
                     .font(font, app)
-                    .color(STYLE.text_muted),
+                    .color(STYLE.text_disabled),
             ));
         } else {
             widgets.push(Box::new(
@@ -2452,7 +2430,7 @@ impl Gameplay {
                     self.event_queue
                         .push(circ_time, Event::CompleteCommand { craft: entity });
                 }
-                Command::Flyby { to, plan, .. } => {
+                Command::Flyby { to, from, plan, .. } => {
                     let departure_time = plan.transfer_state.t;
                     let arrival_time = plan.flyby_state.t;
                     let exit_time = plan.exit_state.t;
@@ -2480,10 +2458,10 @@ impl Gameplay {
 
                     // Exit SOI event
                     self.event_queue.push(
-                        arrival_time,
+                        exit_time,
                         Event::SoiChange {
                             craft: entity,
-                            new_parent: to,
+                            new_parent: from,
                             new_craft_orbit: plan.exit_state,
                             new_soi_radius: plan.soi_radius,
                             desc: sois[1].0,
