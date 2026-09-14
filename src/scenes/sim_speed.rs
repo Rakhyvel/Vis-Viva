@@ -24,7 +24,7 @@ impl SimSpeed {
     ];
 
     pub fn new() -> Self {
-        let starting_idx = 3;
+        let starting_idx = 1;
         Self {
             idx: starting_idx,
             can_speed_up: Rc::new(Cell::new(true)),

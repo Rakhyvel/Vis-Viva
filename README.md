@@ -41,6 +41,8 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x don't offer "escape" if parent is the sun, etc
         x labels, axes, numbers on the porkchop plot
         x add departure time
+        * either tooltip or desc paragraph of what each maneuver kind means
+        * add critical events as diagonal lines on the porkchop plot
     - [x] better time controls, speed control
         x play becomes pause becomes play button
         x fast forward and slow forward, show speed, powers of two days/sec
@@ -48,15 +50,18 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x bread crumbs (Mars > Deimos > Deimos Station) (upwards traversal)
         x bodies have lists of other bodies and craft (downwards traversal)
     - [x] better descriptions for things and what you're supposed to do. What is a "Dray", what is a "Pico", why do I want either?
-    - [x] better events/timeline
+    - [ ] better events/timeline
         - [x] event descs with full details, take me to the entity (station) that's built something
             x resolve `craft: Entity` to the name of the craft
             x store `label: &'static str` on `Burn`, get it from `Command::burn_schedule()`
             x What part is complete? What were you building?
         - [x] event list on left side, shows what's next, what's paused
         - [x] scissor timeline so that dates dont draw off the side
-    - [x] better craft info
-        x tell me the orbital elements for a craft/body
+        * make buttons/sliders pause automatically
+        * gotta figure out a way to include the year in the event list!!
+        * clicking event rows, or events on the timeline, takes you to the craft
+    - [ ] better craft info
+        * tell me the orbital elements for a craft/body
         x tell how long until burns
         x tell me what dv each burn costs
         x tell me in the craft's mission where its going! I forgot!
@@ -68,14 +73,16 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x fabricator shows power draw rate, completion date, and days-until-completion
     - [x] make linepaths participate in occlusion again
     - [ ] lose the game if the station dies
+        * stop ahead of depletion (30 days, 7 days, 1 day)
     - [ ] basic mining
-        * dray has water tank
+        * dray has water tank, mining module
         * when on surface, can mine, fills water tank
         * changes the craft's weight!
     - [ ] docking
+        * probably want another tab for docking ports, otherwise it gets crayzay
         * can dock if close enough, and a port is available
         * can undock
-        * fabricating a craft takes up a docking spot
+        * fabricating a craft takes up a docking spot, open the station's docking tab on completion
     - [ ] resource transfer
         * Dray and Pico have actual H2 and O2 tanks, taken from by engines
         * resource transfer modal
@@ -156,6 +163,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [ ] Show mean + sigma, never truth. Tile coloring overlays by posterior mean, saturated with confidence
 - [ ] Game saves and loading
 - [ ] Misc stuff
+    - [ ] incr craft names, or let people rename them
     - [ ] events should give countdown and absolute datetime
     - [ ] timeline zoom (maybe by dragging the baseline?)
     - [ ] ability to ignore/subscribe to events (like infos)
@@ -166,6 +174,10 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         * tisserand plots? Or just show me the energy gained/lost for each flyby
     - [ ] expose target periapsis, once it matters to the player (when they build their own depot stations)
     - [ ] allow aero capture when payload has heat shield and player has atmospheric instrument readings
+    - [ ] able to build other stations
+        * game is only over when _all_ crew are dead, not just the starter station
+    - [ ] module swapping and building system for stations
+        * stations should be able to build new modules, jettison existing ones, and maybe upgrade existing ones?
     - [ ] heat management
     - [ ] atmospheric harvesting
         * get H2 from gas giants, NH3 from ice giants, CO2 from venus-worlds
@@ -185,6 +197,10 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [ ] planetary atmospheres, clouds, tile detail
     - [ ] better orbit icons, for zoomed out moons, planets, craft. Somehow distinguish between bodies and craft in the orbit view
     - [ ] tooltips, when I figure out what tools to tip
+        * manuever kinds in the dropdown
+        * what modules do, when you hover over their title
+        * destinations in the planner, its size, its composition, etc
+    - [ ] let people explore the game after game over, but disable the play button
     - [ ] make actual building models, and rotate them to their tile's normal
     - [ ] show more info about stage cards, their dv, their resources, maybe a little model sprite, in VAB and factory
     - [ ] somehow show the planned orbital geometry to a player, if it ends up mattering (tuning just dv and time might be fine?)
@@ -193,4 +209,5 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [ ] show the planned trajectory for crafts with a mission, different color, lighter
     - [x] show how many stages we have in inventory in the factory
     - [ ] "kernel boot screen" type loading screen, TUI-esque main menu, like you're interfacing with the "Autonomous Colony Management System" that the player is for the game
+        * A skippable intro scene when you start a new game that tells you that you're the AI controlling the station, the backstory, what the goals are
     - [ ] (purely code) strongly typed units. Dont gotta go full mp-units crazy, and it probably wouldn't work too well with nalgebra... but yknow

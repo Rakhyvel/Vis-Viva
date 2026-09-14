@@ -1060,7 +1060,7 @@ impl Gameplay {
             StationModule { slot: 3 },
             ResourceStore {
                 resource: Resource::Oxygen,
-                amount: 600.0,
+                amount: 10.0,
                 capacity: 600.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1070,7 +1070,7 @@ impl Gameplay {
             StationModule { slot: 4 },
             ResourceStore {
                 resource: Resource::Hydrogen,
-                amount: 100.0,
+                amount: 0.0,
                 capacity: 100.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1089,7 +1089,7 @@ impl Gameplay {
         world.spawn((
             StationModule { slot: 6 },
             Electrolyzer {
-                enabled: true,
+                enabled: false,
                 power_watts: 5_000.0,
                 joules_per_kg_water: 2.52e7,
             },
