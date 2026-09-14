@@ -33,6 +33,12 @@ pub struct PartRaw {
     byproducts: HashMap<Resource, f32>,
     energy_kwh: f32,
     fuel: Option<FuelSpec>,
+    #[serde(default = "default_true")]
+    fabricatable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// On-wire spec for fuel, for stages
@@ -56,6 +62,8 @@ pub struct PartDef {
     pub name: String,
     pub desc: String,
     pub dry_mass_kg: f64,
+
+    pub fabricatable: bool,
 
     pub byproducts: Vec<(Resource, f32)>,
     pub cost: PartCost,
@@ -129,6 +137,7 @@ impl PartRegistry {
                     resources,
                     energy_joules: raw.energy_kwh * JOULES_PER_KWH as f32,
                 },
+                fabricatable: raw.fabricatable,
                 byproducts,
                 fuel: raw.fuel,
                 id: raw.id,

@@ -2170,16 +2170,19 @@ impl Gameplay {
         let factory = self.world.get::<&Factory>(module).unwrap();
         let enabled = Rc::new(Cell::new(true));
         let progress = Rc::new(Cell::new(0.0));
+        let countdown = Rc::new(RefCell::new(String::new()));
+        let power_draw = Rc::new(RefCell::new(String::new()));
         let now = self.current_et.get();
 
         out.push(Label::new(String::from("FABRICATOR")).font(font_small_bold, app));
+        out.push(Label::bound(power_draw.clone()).font(font, app));
 
         if let Some(job) = &factory.current_job {
             let part_name = &self.parts.get(job.part_id).unwrap().name;
 
             let ready_text = match job.completion_et(&factory, now) {
-                Some(et) => format!("Ready {}", et.as_calendar()),
-                None => String::from("Paused"),
+                Some(et) => format!("Ready: {}", et.as_calendar()),
+                None => String::from("Ready:"),
             };
 
             out.push(Label::new(format!("Building {}", part_name)).font(font, app));
@@ -2199,6 +2202,7 @@ impl Gameplay {
                     .bind(progress.clone()),
             );
             out.push(Label::new(ready_text).font(font, app));
+            out.push(Label::bound(countdown.clone()).font(font, app));
             out.push(
                 Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
                     .use_style(&STYLE)
@@ -2210,17 +2214,20 @@ impl Gameplay {
 
             out.bindings.push(Binding::new({
                 let current_et = self.current_et.clone();
-                let enabled = enabled.clone();
                 move |world: &World| {
                     let factory = world.get::<&Factory>(module).unwrap();
-                    progress.set(
-                        factory
-                            .current_job
-                            .as_ref()
-                            .unwrap()
-                            .progress(&factory, current_et.get()) as f32,
-                    );
-                    enabled.set(factory.enabled);
+                    let job = factory.current_job.as_ref().unwrap();
+                    progress.set(job.progress(&factory, current_et.get()) as f32);
+                    let now = current_et.get();
+                    let completion_et = job.completion_et(&factory, now);
+                    let s = match completion_et {
+                        Some(et) if now >= et => "DONE".into(),
+                        Some(et) => format!("T- {}", (et - now).short_duration()),
+                        None => String::from("T-"),
+                    };
+                    if *countdown.borrow() != s {
+                        *countdown.borrow_mut() = s;
+                    }
                 }
             }))
         } else if let Some(part_id) = factory.pending_job {
@@ -2231,6 +2238,7 @@ impl Gameplay {
 
             out.push(Label::new(format!("Queued: {}", part.name)).font(font, app));
             out.push(Label::new(format!("Ready {}", completion.as_calendar())).font(font, app));
+            out.push(Label::bound(countdown.clone()).font(font, app));
             out.push(
                 Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
                     .use_style(&STYLE)
@@ -2239,6 +2247,21 @@ impl Gameplay {
                         fabricator_entity: module,
                     }),
             );
+
+            out.bindings.push(Binding::new({
+                let current_et = self.current_et.clone();
+                move |_world: &World| {
+                    let now = current_et.get();
+                    let s = if now >= completion {
+                        "DONE".into()
+                    } else {
+                        format!("T- {}", (completion - now).short_duration())
+                    };
+                    if *countdown.borrow() != s {
+                        *countdown.borrow_mut() = s;
+                    }
+                }
+            }))
         } else {
             out.push(
                 Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Build...")
@@ -2249,6 +2272,24 @@ impl Gameplay {
                     }),
             );
         }
+
+        out.bindings.push(Binding::new({
+            let text = power_draw.clone();
+            let enabled = enabled.clone();
+            move |world: &World| {
+                if let Ok(fab) = world.get::<&Factory>(module) {
+                    enabled.set(fab.enabled);
+                    let kw = if (fab.enabled && fab.current_job.is_some())
+                        || fab.pending_job.is_some()
+                    {
+                        -fab.power_watts
+                    } else {
+                        0.0
+                    } * Resource::Energy.presentation_scalars().1;
+                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
+                }
+            }
+        }));
 
         out
     }
@@ -2286,7 +2327,7 @@ impl Gameplay {
                     enabled.set(el.enabled);
                     let kw = if el.enabled { -el.power_watts } else { 0.0 }
                         * Resource::Energy.presentation_scalars().1;
-                    *text.borrow_mut() = format!("Power draw: {kw:+.2} kW")
+                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
                 }
             }
         }));

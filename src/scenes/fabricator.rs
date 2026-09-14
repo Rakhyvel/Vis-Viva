@@ -10,7 +10,7 @@ use crate::{
     components::{
         body::Parent,
         factory::{cost_status, CostKind, CostLine, Factory},
-        inventory::{self, PartInventory},
+        inventory::PartInventory,
         parts::{PartDef, PartRegistry},
         station::{station_resource_totals, Resource},
     },
@@ -102,7 +102,7 @@ impl FabricatorUi {
             .ok()
             .and_then(|f| f.pending_job);
 
-        let mut parts: Vec<&PartDef> = registry.all().collect();
+        let mut parts: Vec<&PartDef> = registry.all().filter(|p| p.fabricatable).collect();
         parts.sort_by(|a, b| a.name.cmp(&b.name));
 
         let mut cards: Vec<Box<dyn Widget<FabricatorMessages>>> = Vec::new();
@@ -271,7 +271,7 @@ impl FabricatorUi {
             };
 
             let have_text = if line.need > line.have {
-                format!(" (have {}{})", line.have, unit)
+                format!(" (have {:.0}{})", line.have, unit)
             } else {
                 String::new()
             };

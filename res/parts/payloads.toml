@@ -4,6 +4,7 @@ name = "Station Core"
 desc = "Core of the station."
 dry_mass_kg = 676767676767.0
 energy_kwh = 100000.0
+fabricatable = false
 
 
 [[parts]]
@@ -14,6 +15,7 @@ dry_mass_kg = 1000.0
 inputs = {}
 resources = {water = 10.0}
 energy_kwh = 350.0
+fabricatable = false
 
 
 [[parts]]

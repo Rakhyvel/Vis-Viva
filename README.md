@@ -48,7 +48,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x bread crumbs (Mars > Deimos > Deimos Station) (upwards traversal)
         x bodies have lists of other bodies and craft (downwards traversal)
     - [x] better descriptions for things and what you're supposed to do. What is a "Dray", what is a "Pico", why do I want either?
-    - [ ] better events/timeline
+    - [x] better events/timeline
         - [x] event descs with full details, take me to the entity (station) that's built something
             x resolve `craft: Entity` to the name of the craft
             x store `label: &'static str` on `Burn`, get it from `Command::burn_schedule()`
@@ -60,12 +60,12 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x tell how long until burns
         x tell me what dv each burn costs
         x tell me in the craft's mission where its going! I forgot!
-    - [ ] better fabrication
+    - [x] better fabrication
         x list byproducts
         x gray out fully if a part is unbuildable
         x gray out if 0 in the inventory
-        * mark some parts as un-fabricatable (ilmenite, station core) and don't list them
-        * fabricator shows power draw rate, completion date, and days-until-completion
+        x mark some parts as un-fabricatable (ilmenite, station core) and don't list them
+        x fabricator shows power draw rate, completion date, and days-until-completion
     - [ ] lose the game if the station dies
     - [ ] make linepaths participate in occlusion again
 - [ ] Science
