@@ -1,3 +1,5 @@
+use nalgebra_glm::DVec3;
+
 use crate::astro::{epoch::EphemerisTime, state::State};
 
 pub fn sphere_of_influence(orbital_radius: f64, body_mass: f64, parent_mass: f64) -> f64 {
@@ -216,8 +218,13 @@ pub fn circularization(orbit: &State, mu: f64) -> (State, f64) {
     )
 }
 
-pub fn capture_dv(v_inf: f64, target_mu: f64, r_p: f64) -> f64 {
-    (v_inf * v_inf + 2.0 * target_mu / r_p).sqrt() - (target_mu / r_p).sqrt()
+pub fn capture_at_periapsis_dv(r_rel: DVec3, v_rel: DVec3, mu: f64) -> f64 {
+    let h = r_rel.cross(&v_rel).norm();
+    let energy = v_rel.norm_squared() / 2.0 - mu / r_rel.norm();
+    let e = (1.0 + 2.0 * energy * h * h / (mu * mu)).max(0.0).sqrt();
+    let r_p = h * h / mu / (1.0 + e);
+    let v_p = h / r_p;
+    v_p - (mu / r_p).sqrt()
 }
 
 pub fn impact_parameter(r_p: f64, v_inf: f64, mu: f64) -> f64 {

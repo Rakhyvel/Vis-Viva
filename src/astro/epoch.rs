@@ -70,13 +70,12 @@ impl EphemerisTime {
     pub fn as_calendar(&self) -> String {
         let dt = self.as_datetime();
         format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            "{:04}-{:02}-{:02} {:02}:{:02}",
             dt.year(),
             dt.month(),
             dt.day(),
             dt.hour(),
-            dt.minute(),
-            dt.second()
+            dt.minute()
         )
     }
 
@@ -91,6 +90,15 @@ impl EphemerisTime {
     pub fn day_of_month(&self) -> String {
         let dt = self.as_datetime();
         format!("{:02}", dt.day())
+    }
+
+    pub fn year(&self) -> i32 {
+        self.as_datetime().year()
+    }
+
+    pub fn hour_minute(&self) -> String {
+        let dt = self.as_datetime();
+        format!("{:02}:{:02}", dt.hour(), dt.minute())
     }
 
     pub fn short_datetime(&self) -> String {

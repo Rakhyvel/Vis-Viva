@@ -5,8 +5,8 @@ use crate::astro::{
     epoch::EphemerisTime,
     lambert::{lambert, TransferKind},
     maneuver::{
-        capture_dv, circularization, find_periapsis, find_soi_entry, get_grandparent_state,
-        impact_parameter, sphere_of_influence,
+        capture_at_periapsis_dv, circularization, find_periapsis, find_soi_entry,
+        get_grandparent_state, impact_parameter, sphere_of_influence,
     },
     porkchop::{Cell, Porkchop},
     state::State,
@@ -58,7 +58,7 @@ pub fn transfer_porkchop(
                 .ok()?;
 
             best_branch(|k| {
-                let (v1, v2) = aim_for_periapsis(
+                let (v1, v2, aim) = aim_for_periapsis(
                     craft.r,
                     target,
                     target_body_radius,
@@ -71,7 +71,7 @@ pub fn transfer_porkchop(
                     k,
                 )?;
                 let depart_dv = v1 - craft.v;
-                let arrival_dv = capture_dv((v2 - target.v).norm(), target_mu, target_peri);
+                let arrival_dv = capture_at_periapsis_dv(aim - target.r, v2 - target.v, target_mu);
                 Some(Cell {
                     total: depart_dv.norm() + arrival_dv,
                     depart_dv,
@@ -169,7 +169,7 @@ pub fn flyby_porkchop(
                 .ok()?;
 
             best_branch(|k| {
-                let (v1, _) = aim_for_periapsis(
+                let (v1, _, _) = aim_for_periapsis(
                     craft.r,
                     target,
                     target_body_radius,
@@ -242,7 +242,7 @@ fn aim_for_periapsis(
     target_peri: f64,
     theta: f64,
     kind: TransferKind,
-) -> Option<(DVec3, DVec3)> {
+) -> Option<(DVec3, DVec3, DVec3)> {
     let mut aim = target.r; // we target the body directly on the first pass
     let mut prev_aim = DVec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
     let mut out = None;
@@ -273,7 +273,7 @@ fn aim_for_periapsis(
         let d = (soi_radius * soi_radius - b * b).max(0.0).sqrt();
         aim = target.r + b_vec - s_hat * d;
 
-        out = Some((v1, v2));
+        out = Some((v1, v2, aim));
 
         if (aim - prev_aim).norm() < soi_radius * 1e-6 {
             break;

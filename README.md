@@ -39,8 +39,8 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x add picker to porkchop plot
         x theta
         x don't offer "escape" if parent is the sun, etc
-        * labels, axes, numbers on the porkchop plot, ESPECIALLY departure. Colorbar
-        * MinTime objective, with events drawn on the porkchop plot as lines
+        x labels, axes, numbers on the porkchop plot
+        x add departure time
     - [x] better time controls, speed control
         x play becomes pause becomes play button
         x fast forward and slow forward, show speed, powers of two days/sec
@@ -66,44 +66,8 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x gray out if 0 in the inventory
         x mark some parts as un-fabricatable (ilmenite, station core) and don't list them
         x fabricator shows power draw rate, completion date, and days-until-completion
-    - [ ] lose the game if the station dies
     - [ ] make linepaths participate in occlusion again
-- [ ] Science
-    - [ ] body rotation, axial tilt
-        - allows polar mapping probes to actually exist
-        * axial tilt affects seasons, temps, could have crazy uranus worlds
-        * rotation affects landing and launch delta V
-    - [ ] measurements
-        - z = W * X * H^T + epsilon(X)
-            - z is the measurement vector
-            - W is the light-of-sight footprint weights over tiles
-            - X is N_tiles x N_params truth state
-            - H^T is the instrument-sensitivity
-            - epsilon(X) is state-dependent noise
-        - D += (WH)^T R^-1 (WH)
-        - nu += (WH)^T R-1 z
-    - [ ] parameters
-        - [T_surf, ice, maf, depth, rough]
-            - T_surf: surface pressure, ice abundance (smooth, from tile temp map)
-            - ice: water ice mass fraction
-            - maf: mafic rock mass fraction
-            - depth: burial depth (smooth, from tile terrain perlin)
-            - rough: topographic roughness
-    - [ ] H matrix
-        |                      | T_surf | ice | maf | depth | rough |
-        |----------------------|--------|-----|-----|-------|-------|
-        | IR Spectrometer      |    0.1 | 0.9 | 0.6 |       |       |
-        | IR Radiometer        |    1.0 |     |     |   0.3 |   0.2 | Perhaps add a day/night pair?
-        | Neutron Spectrometer |        | 1.0 |     |   0.3 |       |
-        | Radar                |        | 0.5 | 0.2 |   0.4 |   0.9 | ambigous on purpose!
-    - [ ] Noise
-        * IR Spectrometer returns nothing on an unlit tile
-        * IR Spectrometer noise scales with depth
-        * Optics noise scales with phase angle and slant range
-    - [ ] W
-        * Classic tradeoff of resolution vs coverage, flybys want full coverage, orbits want low eventual resoltuion
-    - [ ] Add spatial smoothness prior
-    - [ ] Show mean + sigma, never truth. Tile coloring overlays by posterior mean, saturated with confidence
+    - [ ] lose the game if the station dies
 - [ ] Mining && ISRU
     - [x] Ilmetite smelting (just give generic "metal" for MVP)
     - [x] station rendevous
@@ -145,6 +109,42 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
             * SiO2 + Energy -> Si + O2
             * CaCO3 + Energy -> CaO + CO2
         * Greenhouse: CO2 + H2O + Energy -> Food + O2 (composes maybe too well with methalox fuel cell?)
+- [ ] Science
+    - [ ] body rotation, axial tilt
+        - allows polar mapping probes to actually exist
+        * axial tilt affects seasons, temps, could have crazy uranus worlds
+        * rotation affects landing and launch delta V
+    - [ ] measurements
+        - z = W * X * H^T + epsilon(X)
+            - z is the measurement vector
+            - W is the light-of-sight footprint weights over tiles
+            - X is N_tiles x N_params truth state
+            - H^T is the instrument-sensitivity
+            - epsilon(X) is state-dependent noise
+        - D += (WH)^T R^-1 (WH)
+        - nu += (WH)^T R-1 z
+    - [ ] parameters
+        - [T_surf, ice, maf, depth, rough]
+            - T_surf: surface pressure, ice abundance (smooth, from tile temp map)
+            - ice: water ice mass fraction
+            - maf: mafic rock mass fraction
+            - depth: burial depth (smooth, from tile terrain perlin)
+            - rough: topographic roughness
+    - [ ] H matrix
+        |                      | T_surf | ice | maf | depth | rough |
+        |----------------------|--------|-----|-----|-------|-------|
+        | IR Spectrometer      |    0.1 | 0.9 | 0.6 |       |       |
+        | IR Radiometer        |    1.0 |     |     |   0.3 |   0.2 | Perhaps add a day/night pair?
+        | Neutron Spectrometer |        | 1.0 |     |   0.3 |       |
+        | Radar                |        | 0.5 | 0.2 |   0.4 |   0.9 | ambigous on purpose!
+    - [ ] Noise
+        * IR Spectrometer returns nothing on an unlit tile
+        * IR Spectrometer noise scales with depth
+        * Optics noise scales with phase angle and slant range
+    - [ ] W
+        * Classic tradeoff of resolution vs coverage, flybys want full coverage, orbits want low eventual resoltuion
+    - [ ] Add spatial smoothness prior
+    - [ ] Show mean + sigma, never truth. Tile coloring overlays by posterior mean, saturated with confidence
 - [ ] Game saves and loading
 - [ ] Misc stuff
     - [ ] events should give countdown and absolute datetime

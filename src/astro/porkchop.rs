@@ -10,7 +10,7 @@ pub struct Porkchop {
     pub tof_min: f64,
     pub tof_max: f64,
     pub tof_steps: usize,
-    /// tof-major, index = j * depart_steps + i
+    /// tof-major, index = j * depart_steps + i, row 0 = longest TOF
     pub cells: Vec<Option<Cell>>,
 }
 
@@ -40,7 +40,7 @@ impl Porkchop {
             .collect::<Vec<_>>()
             .into_par_iter()
             .map(|(i, j)| {
-                let tof = tof_min + (tof_max - tof_min) * j as f64 / (tof_steps - 1) as f64;
+                let tof = Self::tof_for_row(tof_min, tof_max, tof_steps, j);
                 eval(current_et + step * i as i64, tof)
             })
             .collect();
@@ -61,7 +61,7 @@ impl Porkchop {
     }
 
     pub fn tof_at(&self, j: usize) -> f64 {
-        self.tof_min + (self.tof_max - self.tof_min) * j as f64 / (self.tof_steps - 1) as f64
+        Self::tof_for_row(self.tof_min, self.tof_max, self.tof_steps, j)
     }
 
     pub fn best(&self, objective: &TransferObjective) -> Option<(usize, usize, &Cell)> {
@@ -80,5 +80,9 @@ impl Porkchop {
 
     pub fn at(&self, i: usize, j: usize) -> Option<&Cell> {
         self.cells.get(j * self.depart_steps + i)?.as_ref()
+    }
+
+    fn tof_for_row(tof_min: f64, tof_max: f64, tof_steps: usize, j: usize) -> f64 {
+        tof_max - (tof_max - tof_min) * j as f64 / (tof_steps - 1) as f64
     }
 }

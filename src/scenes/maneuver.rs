@@ -18,15 +18,20 @@ use crate::{
             flyby_porkchop, plan_flyby_at, plan_transfer_at, transfer_porkchop, FlybyPlan,
             TransferPlan,
         },
-        units::G,
+        units::{G, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
     components::{
         body::{Body, Parent, SceneObject},
         craft::{Command, Craft, Landed},
     },
     ui::{
-        container::Container, dropdown::Dropdown, hrule::HRule, oklch::oklch,
-        porkchop_picker::PorkchopPicker, slider::Slider, style::STYLE,
+        container::Container,
+        dropdown::Dropdown,
+        hrule::HRule,
+        oklch::oklch,
+        porkchop_picker::{PlotAxes, PorkchopPicker},
+        slider::Slider,
+        style::STYLE,
     },
 };
 use apricot::{app::App, font::FontId, render_core::TextureId};
@@ -59,12 +64,15 @@ pub struct ManeuverModal {
     computed_plan: Option<ManeuverResult>,
 
     result_dv_text: Rc<RefCell<String>>,
+    result_depart_text: Rc<RefCell<String>>,
     result_date_text: Rc<RefCell<String>>,
     inclination_text: Rc<RefCell<String>>,
     dv_color: Rc<RefCell<Vec4>>,
     can_confirm: Rc<Cell<bool>>,
     theta: Rc<Cell<f32>>,
+    axes: Rc<Cell<Option<PlotAxes>>>,
 
+    budget: f64,
     window: Option<SweepWindow>,
     porkchop: Option<Porkchop>,
     porkchop_texture_id: TextureId,
@@ -199,6 +207,17 @@ impl ManeuverResult {
         }
     }
 
+    pub fn departure_et(&self) -> EphemerisTime {
+        match self {
+            ManeuverResult::Transfer { plan, .. } => plan.transfer_state.t,
+            ManeuverResult::Flyby { plan, .. } => plan.transfer_state.t,
+            ManeuverResult::Rendezvous { plan, .. } => plan.transfer_state.t,
+            ManeuverResult::Escape { plan, .. } => plan.escape_burn.t,
+            ManeuverResult::Land { plan, .. } => plan.deorbit_burn.t,
+            ManeuverResult::Launch { plan, .. } => plan.launch_burn.t,
+        }
+    }
+
     pub fn arrival_et(&self) -> EphemerisTime {
         match self {
             ManeuverResult::Transfer { plan, .. } => plan.circ_state.t,
@@ -237,13 +256,16 @@ impl ManeuverModal {
             selected_date: EphemerisTime::epoch(),
             computed_plan: None,
 
+            result_depart_text: Rc::new(RefCell::new(String::new())),
             result_date_text: Rc::new(RefCell::new(String::new())),
             result_dv_text: Rc::new(RefCell::new(String::new())),
             inclination_text: Rc::new(RefCell::new(String::new())),
             dv_color: Rc::new(RefCell::new(Vec4::zeros())),
             can_confirm: Rc::new(Cell::new(false)),
             theta: Rc::new(Cell::new(0.0)),
+            axes: Rc::new(Cell::new(None)),
 
+            budget: 0.0,
             window: None,
             porkchop: None,
             porkchop_texture_id: app.renderer.create_texture_rgba(1, 1, &[0, 0, 0, 0]),
@@ -384,12 +406,27 @@ impl ManeuverModal {
         self.porkchop = self.compute_porkchop(craft, world);
 
         if let Some(chop) = &self.porkchop {
+            self.budget = world
+                .get::<&Craft>(craft)
+                .map(|c| c.total_remaining_dv())
+                .unwrap_or(0.0)
+                / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
+            let bytes = self.porkchop_rgba(chop);
+
             app.renderer.update_texture_rgba(
                 self.porkchop_texture_id,
                 chop.depart_steps as u32,
                 chop.tof_steps as u32,
-                &Self::porkchop_rgba(chop),
+                &bytes,
             );
+
+            self.axes.set(Some(PlotAxes {
+                depart_start: chop.current_et,
+                depart_step: chop.step,
+                tof_min: chop.tof_min,
+                tof_max: chop.tof_max,
+            }));
+
             if let Some((i, j, _)) = chop.best(&TransferObjective::MinFuel) {
                 self.optimum.set((i, j));
                 if update_selected {
@@ -402,6 +439,7 @@ impl ManeuverModal {
                 self.optimum.set((0, 0));
             }
         } else {
+            self.axes.set(None);
             app.renderer
                 .update_texture_rgba(self.porkchop_texture_id, 1, 1, &[0, 0, 0, 0]);
         }
@@ -434,7 +472,7 @@ impl ManeuverModal {
         self.refresh_chop(craft, current_et, world, app, false);
     }
 
-    fn sync_labels(&self, world: &World) {
+    fn sync_labels(&mut self, world: &World) {
         let dv = self
             .computed_plan
             .as_ref()
@@ -443,12 +481,20 @@ impl ManeuverModal {
             *self.result_dv_text.borrow_mut() = dv;
         }
 
-        let date = self
+        let depart_date = self
+            .computed_plan
+            .as_ref()
+            .map_or_else(|| String::from("-"), |p| p.departure_et().as_calendar());
+        if *self.result_depart_text.borrow() != depart_date {
+            *self.result_depart_text.borrow_mut() = depart_date;
+        }
+
+        let arrival_date = self
             .computed_plan
             .as_ref()
             .map_or_else(|| String::from("-"), |p| p.arrival_et().as_calendar());
-        if *self.result_date_text.borrow() != date {
-            *self.result_date_text.borrow_mut() = date;
+        if *self.result_date_text.borrow() != arrival_date {
+            *self.result_date_text.borrow_mut() = arrival_date;
         }
 
         let inclination = format!(
@@ -595,6 +641,7 @@ impl ManeuverModal {
                     TOF_STEPS,
                     self.selected_cell.clone(),
                     self.optimum.clone(),
+                    self.axes.clone(),
                 )));
                 sections.push(Box::new(
                     Container::new(vec![
@@ -649,7 +696,15 @@ impl ManeuverModal {
         ));
         sections.push(Box::new(
             container![
-                Label::new("Arrival: ").font(font, app).color(STYLE.text),
+                Label::new("Departure: ").font(font, app).color(STYLE.text),
+                Label::bound(self.result_depart_text.clone()).font(font, app),
+            ]
+            .padding(vec2(0.0, 0.0))
+            .flow(Flow::Horizontal),
+        ));
+        sections.push(Box::new(
+            container![
+                Label::new("Arrival:   ").font(font, app).color(STYLE.text), // pad it out to match departure. This only works because we use a monospaced font
                 Label::bound(self.result_date_text.clone()).font(font, app),
             ]
             .padding(vec2(0.0, 0.0))
@@ -802,7 +857,7 @@ impl ManeuverModal {
                 let (i, j) = self.selected_cell.get();
                 let depart_et = chop.depart_at(i);
                 let tof = chop.tof_at(j);
-                let depart_dv = chop.at(i, j).expect("cell was none").depart_dv;
+                let depart_dv = chop.at(i, j)?.depart_dv;
 
                 match plan_transfer_at(
                     init_state.as_ref().ok()?,
@@ -919,26 +974,19 @@ impl ManeuverModal {
         }
     }
 
-    fn porkchop_rgba(chop: &Porkchop) -> Vec<u8> {
+    fn porkchop_rgba(&self, chop: &Porkchop) -> Vec<u8> {
         let mut bytes = vec![0u8; chop.depart_steps * chop.tof_steps * 4];
 
-        let lo = chop
-            .cells
-            .iter()
-            .flatten()
-            .map(|c| c.total)
-            .fold(f64::INFINITY, f64::min);
-        if !lo.is_finite() {
-            return bytes; // nothing is feasible :(
-        }
-        let hi = lo * 3.0;
-
+        let lo = 0.0;
+        let hi = self.budget;
+        let span = (hi - lo).max(f64::EPSILON);
         for (n, cell) in chop.cells.iter().enumerate() {
-            let pixel: [u8; 4] = if let Some(c) = cell {
-                let t = ((c.total - lo) / (hi - lo)).clamp(0.0, 1.0) as f32;
-                Self::colormap(t)
-            } else {
-                [0, 0, 0, 0]
+            let pixel: [u8; 4] = match cell {
+                Some(c) if c.total <= hi => {
+                    let t = ((c.total - lo) / (span)).clamp(0.0, 1.0) as f32;
+                    Self::colormap(t)
+                }
+                _ => [0, 0, 0, 0],
             };
             bytes[n * 4..n * 4 + 4].copy_from_slice(&pixel);
         }
