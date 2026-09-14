@@ -68,6 +68,18 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x fabricator shows power draw rate, completion date, and days-until-completion
     - [x] make linepaths participate in occlusion again
     - [ ] lose the game if the station dies
+    - [ ] basic mining
+        * dray has water tank
+        * when on surface, can mine, fills water tank
+        * changes the craft's weight!
+    - [ ] docking
+        * can dock if close enough, and a port is available
+        * can undock
+        * fabricating a craft takes up a docking spot
+    - [ ] resource transfer
+        * Dray and Pico have actual H2 and O2 tanks, taken from by engines
+        * resource transfer modal
+        * dont just take H2 and O2, transfer to craft
 - [ ] Mining && ISRU
     - [x] Ilmetite smelting (just give generic "metal" for MVP)
     - [x] station rendevous
@@ -84,9 +96,6 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
             - cheaply inferable, no noise floor, otherwise players get mad. Gambles are **ALWAYS** on reward, never on cost. Never hestiate to randomly reward the player. Never punish the player for something they have no control of/insight into.
             * for ice: a function of the tile_map
             * for ilmenite: a function of atmospheric pressure and surface gravity
-    - [ ] docking, fabricating a craft takes up a docking spot (faux assembly bay?)
-    - [ ] resource transfer modal
-        * and maybe don't just take LH2O2 from the station, make the user fill it themselves
     - [ ] inventory transfer modal
     - [ ] ability to choose your landing site from what's available underneathe you
     - [ ] surface outpots on tiles (give them solar panels for now)

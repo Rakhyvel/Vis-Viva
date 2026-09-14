@@ -50,6 +50,7 @@ use crate::{
     scenes::{
         events::{Event, EventQueue},
         fabricator::{FabricatorAction, FabricatorUi},
+        game_over::GameOverUi,
         maneuver::ManeuverModal,
         sim_speed::SimSpeed,
         starbox::Starbox,
@@ -129,6 +130,7 @@ pub struct Gameplay {
     fabricator_ui: FabricatorUi,
     vab_ui: VabUi,
     maneuver_ui: ManeuverModal,
+    game_over_ui: GameOverUi,
 
     // RCs for GUI
     controls_enabled: Rc<Cell<bool>>,
@@ -338,8 +340,14 @@ impl SelectionState {
 impl Scene for Gameplay {
     /// Update the scene every tick
     fn update(&mut self, app: &App) {
-        let modal_open =
-            self.fabricator_ui.is_shown() || self.vab_ui.is_shown() || self.maneuver_ui.is_shown();
+        let modal_open = self.fabricator_ui.is_shown()
+            || self.vab_ui.is_shown()
+            || self.maneuver_ui.is_shown()
+            || self.game_over_ui.is_shown();
+
+        if self.game_over_ui.update(app) {
+            app.running.set(false);
+        }
 
         if let Some(FabricatorAction {
             fabricator,
@@ -535,6 +543,23 @@ impl Scene for Gameplay {
                 self.complete_due_jobs(t, app);
                 self.recompute_run_until();
             }
+
+            if !self.game_over_ui.is_shown() {
+                if let Some((station, cause)) = self.crew_death() {
+                    let now = self.current_et.get();
+                    commit_station(&self.world, station, now);
+                    self.world.get::<&mut Station>(station).unwrap().num_crew = 0;
+                    self.paused = true;
+                    self.run_until = None;
+
+                    let name = self
+                        .world
+                        .get::<&SceneObject>(station)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_default();
+                    self.game_over_ui.show(&name, cause, now, app);
+                }
+            }
         }
 
         // Update GUI stuff
@@ -704,6 +729,7 @@ impl Scene for Gameplay {
         self.fabricator_ui.render(app);
         self.vab_ui.render(app);
         self.maneuver_ui.render(app);
+        self.game_over_ui.render(app);
     }
 }
 
@@ -1136,6 +1162,7 @@ impl Gameplay {
             fabricator_ui: FabricatorUi::new(),
             vab_ui: VabUi::new(),
             maneuver_ui: ManeuverModal::new(app),
+            game_over_ui: GameOverUi::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
             turn_progress: Rc::new(Cell::new(0.0)),
@@ -2865,6 +2892,25 @@ impl Gameplay {
             &mut self.bvh,
         );
         self.selection.crafts.push(craft);
+    }
+
+    fn crew_death(&self) -> Option<(Entity, Resource)> {
+        const CRITICAL: [Resource; 3] = [Resource::Oxygen, Resource::Water, Resource::Energy];
+        let now = self.current_et.get();
+        for (station, s) in self.world.query::<&Station>().iter() {
+            if s.num_crew == 0 {
+                continue;
+            }
+            for r in CRITICAL {
+                let (stored, _) = station_resource_totals(&self.world, station, r, now);
+                let flow = station_resource_amount_flow(&self.world, station, r, false);
+                // Under a second of supply counts as empty, so float rounding at the stop can't delay it
+                if flow < 0.0 && stored / -flow < 1.0 {
+                    return Some((station, r));
+                }
+            }
+        }
+        None
     }
 
     /// Updates planets based on their on-rails orbits around their parent bodies
