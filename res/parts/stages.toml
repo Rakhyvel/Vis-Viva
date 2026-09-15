@@ -22,3 +22,18 @@ energy_kwh = 7#200.0
 max_fuel_mass_kg = 600.0
 isp = 450.0
 thrust_kn = 1.0
+
+[[parts.modules]]
+kind = "store"
+resource = "energy"
+capacity = 500.0
+
+[[parts.modules]]
+kind = "store"
+resource = "water"
+capacity = 500.0
+
+[[parts.modules]]
+kind = "miner"
+kg_per_s = 0.0015
+power_watts = 5.0

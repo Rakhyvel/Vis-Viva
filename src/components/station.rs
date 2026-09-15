@@ -6,13 +6,21 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{body::Parent, factory::Factory, parts::PartRegistry},
+    components::{
+        body::{Body, Parent},
+        craft::Landed,
+        factory::Factory,
+        parts::PartRegistry,
+    },
 };
 
 pub struct Station {
     pub num_crew: usize,
+}
 
+pub struct ModuleHost {
     /// bumped whenever a module is added or removed
+    /// TODO: May want to rework when we can jettison modules, and dock and undock from the same ports
     pub modules_gen: u32,
 }
 
@@ -42,38 +50,32 @@ fn committed_totals(world: &World, station: Entity, r: Resource) -> (f32, f32) {
 /// Gets the total station-wide amount time derivative for a resource, in unit/sec
 pub fn station_resource_amount_flow(
     world: &World,
-    station: Entity,
+    host: Entity,
     r: Resource,
     projected: bool,
 ) -> f32 {
-    let Ok(s) = world.get::<&Station>(station) else {
-        return 0.0;
-    };
-
     // Accumulate producers of a resource
     const H2_PER_H2O: f32 = 0.1119;
     const O2_PER_H2O: f32 = 0.8881;
     const O2_PER_CREW_DAY: f32 = -0.84;
     const WATER_PER_CREW_DAY: f32 = -3.5;
 
-    let crew_water = s.num_crew as f32 * WATER_PER_CREW_DAY / SECONDS_PER_DAY as f32;
-    let crew_o2 = s.num_crew as f32 * O2_PER_CREW_DAY / SECONDS_PER_DAY as f32;
-    let el = electrolyzer_kg_per_s(world, station);
+    let num_crew = world.get::<&Station>(host).map(|s| s.num_crew).unwrap_or(0);
+    let crew_water = num_crew as f32 * WATER_PER_CREW_DAY / SECONDS_PER_DAY as f32;
+    let crew_o2 = num_crew as f32 * O2_PER_CREW_DAY / SECONDS_PER_DAY as f32;
+    let el = electrolyzer_kg_per_s(world, host);
 
     match r {
-        Resource::Water => crew_water + -el,
+        Resource::Water => crew_water + -el + miner_kg_per_s(world, host),
         Resource::Oxygen => crew_o2 + el * O2_PER_H2O,
         Resource::Hydrogen => el * H2_PER_H2O,
         Resource::Energy => {
-            let mut watts = station_net_watts(world, station);
+            let mut watts = station_net_watts(world, host);
             if projected {
                 for (_, (_, parent, fab)) in
                     world.query::<(&StationModule, &Parent, &Factory)>().iter()
                 {
-                    if parent.id == station
-                        && fab.current_job.is_none()
-                        && fab.pending_job.is_some()
-                    {
+                    if parent.id == host && fab.current_job.is_none() && fab.pending_job.is_some() {
                         watts -= fab.power_watts;
                     }
                 }
@@ -354,6 +356,34 @@ impl Electrolyzer {
         let (water, _) = committed_totals(world, station, Resource::Water);
         self.enabled && water > 0.0
     }
+}
+
+pub struct Miner {
+    pub enabled: bool,
+    /// How power much this miner draws when on
+    pub power_watts: f32,
+    pub kg_per_s: f32,
+}
+
+pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
+    if world.get::<&Landed>(host).is_err() {
+        return 0.0;
+    }
+
+    let Ok(parent) = world.get::<&Parent>(host) else {
+        return 0.0;
+    };
+    let Ok(body) = world.get::<&Body>(parent.id) else {
+        return 0.0;
+    };
+
+    let mut kg_s = 0.0;
+    for (_, (_, p, m)) in world.query::<(&StationModule, &Parent, &Miner)>().iter() {
+        if p.id == host && m.enabled {
+            kg_s += m.kg_per_s * 0.4; // TODO: Take from body ice fraction
+        }
+    }
+    kg_s
 }
 
 // TODO: This doens't belong here!

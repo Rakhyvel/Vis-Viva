@@ -35,6 +35,8 @@ pub struct PartRaw {
     fuel: Option<FuelSpec>,
     #[serde(default = "default_true")]
     fabricatable: bool,
+    #[serde(default)]
+    modules: Vec<ModuleSpec>,
 }
 
 fn default_true() -> bool {
@@ -68,6 +70,8 @@ pub struct PartDef {
     pub byproducts: Vec<(Resource, f32)>,
     pub cost: PartCost,
     pub fuel: Option<FuelSpec>,
+
+    pub modules: Vec<ModuleSpec>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +79,13 @@ pub struct PartCost {
     pub parts: Vec<(u64, u32)>,
     pub resources: Vec<(Resource, f32)>,
     pub energy_joules: f32,
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ModuleSpec {
+    Store { resource: Resource, capacity: f32 },
+    Miner { power_watts: f32, kg_per_s: f32 },
 }
 
 impl PartRegistry {
@@ -143,6 +154,7 @@ impl PartRegistry {
                 id: raw.id,
                 name: raw.name,
                 desc: raw.desc,
+                modules: raw.modules,
             };
             let res = parts.insert(id_hash(&def.id), def).is_none();
             assert!(

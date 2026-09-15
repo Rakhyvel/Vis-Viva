@@ -37,11 +37,12 @@ use crate::{
         },
         factory::{projected_completion, Factory},
         inventory::PartInventory,
-        parts::{id_hash, PartDef, PartRegistry},
+        parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
             station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
-            Electrolyzer, Resource, ResourceStore, SolarPanel, Station, StationModule,
+            Electrolyzer, Miner, ModuleHost, Resource, ResourceStore, SolarPanel, Station,
+            StationModule,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },
@@ -176,6 +177,9 @@ pub enum CommandMessages {
     },
     ToggleElectrolyzer {
         electrolyzer_entity: Entity,
+    },
+    ToggleMiner {
+        miner_entity: Entity,
     },
     CancelCommand {
         craft: Entity,
@@ -464,6 +468,11 @@ impl Scene for Gameplay {
                             .get::<&mut Electrolyzer>(electrolyzer_entity)
                             .unwrap();
                         electrolyzer.enabled = !electrolyzer.enabled;
+                    }
+                    CommandMessages::ToggleMiner { miner_entity } => {
+                        self.commit_station();
+                        let mut miner = self.world.get::<&mut Miner>(miner_entity).unwrap();
+                        miner.enabled = !miner.enabled;
                     }
                     CommandMessages::SelectEntity { entity } => {
                         self.selection.set_selected(entity, app.seconds as f64);
@@ -1023,10 +1032,8 @@ impl Gameplay {
             .insert(
                 station,
                 (
-                    Station {
-                        num_crew: 2,
-                        modules_gen: 0,
-                    },
+                    Station { num_crew: 2 },
+                    ModuleHost { modules_gen: 0 },
                     starting_inventory,
                 ),
             )
@@ -1458,12 +1465,18 @@ impl Gameplay {
         out.push(Label::new(name).font(font_big, app));
         out.push(HRule::new(STYLE.border, 1.0, WIDTH));
 
-        if self.world.get::<&Station>(selected).is_ok() {
-            out.merge(self.station_selection(selected, app));
-        } else if self.world.get::<&Craft>(selected).is_ok() {
+        if self
+            .world
+            .entity(selected)
+            .is_ok_and(|e| e.has::<Craft>() && !e.has::<Station>())
+        {
             out.merge(self.craft_selection(selected, app));
         } else if self.world.get::<&Body>(selected).is_ok() {
             out.merge(self.body_selection(selected, app));
+        }
+
+        if self.world.get::<&ModuleHost>(selected).is_ok() {
+            out.merge(self.module_list(selected, app));
         }
 
         out
@@ -2007,21 +2020,6 @@ impl Gameplay {
         ancestors
     }
 
-    fn station_selection(&self, station: Entity, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-
-        let mut out = Section::default();
-
-        // List of all the modules
-        out.push(Label::new("MODULES").font(font_small_bold, app));
-        out.merge(self.module_list(station, app));
-
-        out
-    }
-
     fn module_list(&self, station: Entity, app: &App) -> Section {
         let mut modules: Vec<(u32, Entity)> = self
             .world
@@ -2030,9 +2028,21 @@ impl Gameplay {
             .filter(|(_, (_, p))| p.id == station)
             .map(|(e, (m, _))| (m.slot, e))
             .collect();
-        modules.sort_by_key(|(slot, _)| *slot);
 
         let mut out = Section::default();
+        if modules.is_empty() {
+            // Don't even THINK about adding the modules title buster
+            return out;
+        }
+
+        modules.sort_by_key(|(slot, _)| *slot);
+
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+
+        out.push(Label::new("MODULES").font(font_small_bold, app));
 
         for (_, module) in modules {
             out.merge(self.module_section(module, app).into_card());
@@ -2054,6 +2064,8 @@ impl Gameplay {
             return self.fabricator_section(module, app);
         } else if self.world.get::<&Electrolyzer>(module).is_ok() {
             return self.electrolyzer_section(module, app);
+        } else if self.world.get::<&Miner>(module).is_ok() {
+            return self.miner_section(module, app);
         }
 
         let mut out = Section::default();
@@ -2362,11 +2374,55 @@ impl Gameplay {
         out
     }
 
+    fn miner_section(&self, module: Entity, app: &App) -> Section {
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+        let font = app.renderer.get_font_id_from_name("font").unwrap();
+
+        let mut out = Section::default();
+
+        let text = Rc::new(RefCell::new(String::new()));
+        let enabled = Rc::new(Cell::new(false));
+
+        out.push(Label::new(String::from("MINER")).font(font_small_bold, app));
+        out.push(
+            Toggle::new("Enabled:")
+                .bind(enabled.clone())
+                .use_style(&STYLE)
+                .on_toggle(CommandMessages::ToggleMiner {
+                    miner_entity: module,
+                })
+                .bound_active(self.controls_enabled.clone())
+                .font(font, app),
+        );
+        out.push(Label::bound(text.clone()).font(font, app));
+
+        out.bindings.push(Binding::new({
+            let text = text.clone();
+            let enabled = enabled.clone();
+            move |world: &World| {
+                if let Ok(miner) = world.get::<&Miner>(module) {
+                    enabled.set(miner.enabled);
+                    let kw = if miner.enabled {
+                        -miner.power_watts
+                    } else {
+                        0.0
+                    } * Resource::Energy.presentation_scalars().1;
+                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
+                }
+            }
+        }));
+
+        out
+    }
+
     fn gui_structure_key(&self) -> Option<(Entity, u32, u64, u64)> {
         let sel = self.selection.selected_entity()?;
         let gen = self
             .world
-            .get::<&Station>(sel)
+            .get::<&ModuleHost>(sel)
             .map(|s| s.modules_gen)
             .unwrap_or(0);
 
@@ -2436,7 +2492,10 @@ impl Gameplay {
             }
 
             // update for module ui
-            self.world.get::<&mut Station>(station).unwrap().modules_gen += 1;
+            self.world
+                .get::<&mut ModuleHost>(station)
+                .unwrap()
+                .modules_gen += 1;
         }
     }
 
@@ -2762,6 +2821,7 @@ impl Gameplay {
                     self.current_et.get().as_calendar()
                 );
                 let parent_id = self.world.get::<&Parent>(craft).unwrap().id;
+                commit_station(&self.world, craft, self.current_et.get());
                 self.world.remove_one::<Landed>(craft).ok();
                 self.world
                     .insert(craft, (Parent { id: parent_id },))
@@ -2782,6 +2842,7 @@ impl Gameplay {
 
                 self.world.remove_one::<State>(craft).ok();
                 replace_line_path(&mut self.world, &app.renderer, craft, None);
+                commit_station(&self.world, craft, self.current_et.get());
                 self.world.insert_one(craft, Landed { offset }).unwrap();
             }
             Event::CompleteCommand { craft } => {
@@ -2796,7 +2857,7 @@ impl Gameplay {
     }
 
     fn commit_station(&self) {
-        for (station, _) in self.world.query::<&Station>().iter() {
+        for (station, _) in self.world.query::<&ModuleHost>().iter() {
             commit_station(&self.world, station, self.current_et.get());
         }
     }
@@ -2891,6 +2952,40 @@ impl Gameplay {
             &app.renderer,
             &mut self.bvh,
         );
+
+        self.world
+            .insert_one(craft, ModuleHost { modules_gen: 0 })
+            .unwrap();
+
+        for (slot, spec) in def.modules.iter().enumerate() {
+            let slot = StationModule { slot: slot as u32 };
+            let parent = Parent { id: craft };
+            match *spec {
+                ModuleSpec::Store { resource, capacity } => self.world.spawn((
+                    slot,
+                    ResourceStore {
+                        resource,
+                        amount: 0.0,
+                        capacity,
+                        amount_et: now,
+                    },
+                    parent,
+                )),
+                ModuleSpec::Miner {
+                    power_watts,
+                    kg_per_s,
+                } => self.world.spawn((
+                    slot,
+                    Miner {
+                        enabled: false,
+                        kg_per_s,
+                        power_watts,
+                    },
+                    parent,
+                )),
+            };
+        }
+
         self.selection.crafts.push(craft);
     }
 
@@ -3065,7 +3160,7 @@ impl Gameplay {
         }
 
         // Add projected reservoir limit events, Depleted and Filled
-        for (entity, (_, scene_obj)) in self.world.query::<(&Station, &SceneObject)>().iter() {
+        for (entity, (_, scene_obj)) in self.world.query::<(&ModuleHost, &SceneObject)>().iter() {
             for (et, resource, rate) in next_reservoir_limits(
                 &self.world,
                 entity,
@@ -3122,7 +3217,7 @@ impl Gameplay {
 
     fn next_station_limit(&self, now: EphemerisTime) -> Option<EphemerisTime> {
         let mut limits = vec![];
-        for (entity, _) in self.world.query::<&Station>().iter() {
+        for (entity, _) in self.world.query::<&ModuleHost>().iter() {
             limits.extend(next_reservoir_limits(
                 &self.world,
                 entity,

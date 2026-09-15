@@ -4,10 +4,10 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
 
 ## TODO:
 - [x] Procedurally generated solar system
-- [x] Delta-V graph
+- [x] Delta-V
 - [x] Stages/payloads
 - [x] Dynamic UI elements
-- [ ] station
+- [x] station
     - [x] station entity with modules/components (start off hovering this! no factory/vab!)
         x station cores have slots for modules, shown in the context menu
         x has builtin batteries
@@ -29,8 +29,6 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x replace build button with progress bar, "Done by ... " text
         x show inventory
     - [x] force there to be a jupiter-analog
-    - [ ] assembly bay module: combines parts into spacecraft
-    - [ ] can build new modules (x or just start with electrolysis module?)
 - [ ] MVP stuff
     - [ ] better mission planning
         x tell me in the mission planner UI if the lambert solver failed
@@ -72,17 +70,19 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         x mark some parts as un-fabricatable (ilmenite, station core) and don't list them
         x fabricator shows power draw rate, completion date, and days-until-completion
     - [x] make linepaths participate in occlusion again
-    - [ ] lose the game if the station dies
+    - [x] lose the game if the station dies
         * stop ahead of depletion (30 days, 7 days, 1 day)
     - [ ] basic mining
-        * dray has water tank, mining module
+        * dray has water tank, mining module, battery
         * when on surface, can mine, fills water tank
+        * miner draws power
         * changes the craft's weight!
     - [ ] docking
         * probably want another tab for docking ports, otherwise it gets crayzay
         * can dock if close enough, and a port is available
         * can undock
         * fabricating a craft takes up a docking spot, open the station's docking tab on completion
+            - If we make this the same requirement for modules, modules could just take up slots, the same as craft
     - [ ] resource transfer
         * Dray and Pico have actual H2 and O2 tanks, taken from by engines
         * resource transfer modal
@@ -101,8 +101,8 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
             - largely uncertain, with high noise floor
         * availability = "energy per kg"
             - cheaply inferable, no noise floor, otherwise players get mad. Gambles are **ALWAYS** on reward, never on cost. Never hestiate to randomly reward the player. Never punish the player for something they have no control of/insight into.
-            * for ice: a function of the tile_map
-            * for ilmenite: a function of atmospheric pressure and surface gravity
+            * for ice: a function of the tile_map and the `rough` param
+            * for ilmenite: a function of atmospheric pressure and surface gravity and the `rough` param
     - [ ] inventory transfer modal
     - [ ] ability to choose your landing site from what's available underneathe you
     - [ ] surface outpots on tiles (give them solar panels for now)
@@ -177,8 +177,9 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [ ] able to build other stations
         * game is only over when _all_ crew are dead, not just the starter station
     - [ ] module swapping and building system for stations
-        * stations should be able to build new modules, jettison existing ones, and maybe upgrade existing ones?
+        * stations should be able to build new modules in open slots, jettison existing ones
     - [ ] heat management
+        * radiators would be weaker near the sun
     - [ ] atmospheric harvesting
         * get H2 from gas giants, NH3 from ice giants, CO2 from venus-worlds
     - [ ] boiloff for cryo fuels, cooling systems which add weight and take power, tradeoff between cryogenics and hypergolic fuels.
