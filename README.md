@@ -73,8 +73,8 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] lose the game if the station dies
         * stop ahead of depletion (30 days, 7 days, 1 day)
     - [ ] basic mining
-        * dray has water tank, mining module, battery
-        * when on surface, can mine, fills water tank
+        x dray has water tank, mining module, battery
+        * when on surface, can mine, fills water tank, and STOPS before it overflows
         * miner draws power
         * changes the craft's weight!
     - [ ] docking
@@ -83,6 +83,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
         * can undock
         * fabricating a craft takes up a docking spot, open the station's docking tab on completion
             - If we make this the same requirement for modules, modules could just take up slots, the same as craft
+        * retire stages/payloads
     - [ ] resource transfer
         * Dray and Pico have actual H2 and O2 tanks, taken from by engines
         * resource transfer modal

@@ -1,6 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     f32::consts::FRAC_PI_2,
+    hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
 };
 
@@ -58,7 +59,7 @@ pub struct TimelineMark {
     pub detail: String,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash)]
 pub enum MarkKind {
     Burn,
     SoiChange,
@@ -67,6 +68,19 @@ pub enum MarkKind {
     FactoryComplete,
     Critical,
     Good,
+}
+
+pub fn marks_digest(marks: &[TimelineMark]) -> u64 {
+    let mut acc: u64 = 0;
+    for m in marks {
+        let mut h = DefaultHasher::new();
+        m.subject.hash(&mut h);
+        m.detail.hash(&mut h);
+        m.t.short_datetime().hash(&mut h);
+        m.kind.hash(&mut h);
+        acc = acc.wrapping_add(h.finish());
+    }
+    acc
 }
 
 impl From<BurnPurpose> for MarkKind {

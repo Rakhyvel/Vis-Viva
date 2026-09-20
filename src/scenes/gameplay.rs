@@ -69,7 +69,7 @@ use crate::{
         shape::Shape,
         stat_row::stat_row,
         style::STYLE,
-        timeline::{MarkKind, Timeline, TimelineMark},
+        timeline::{marks_digest, MarkKind, Timeline, TimelineMark},
         toggle::Toggle,
     },
 };
@@ -123,7 +123,7 @@ pub struct Gameplay {
     /// Used for tab key latch
     prev_tab_state: bool,
 
-    turn_gui_built_for: Option<(I32Vec2, (u64, u64), Option<EphemerisTime>)>,
+    turn_gui_built_for: Option<(I32Vec2, u64, Option<EphemerisTime>)>,
     turn_gui: Anchor<TurnMessages>,
     gui: Anchor<CommandMessages>,
     gui_built_for: Option<(Entity, u32, u64, u64)>,
@@ -138,7 +138,7 @@ pub struct Gameplay {
     turn_progress: Rc<Cell<f32>>,
     calendar_string: Rc<RefCell<String>>,
     marks: Rc<RefCell<Vec<TimelineMark>>>,
-    marks_key: (u64, u64),
+    marks_version: u64,
     transport_icon: Rc<Cell<Icon>>,
 
     // Events and timeline
@@ -594,11 +594,9 @@ impl Scene for Gameplay {
         self.sync_selected_tile(app);
         self.line_path_system(app);
         self.sync_models(app);
-        let key = (self.event_queue.version(), self.job_state_bits());
-        if key != self.marks_key {
-            self.marks_key = key;
-            *self.marks.borrow_mut() = self.build_marks();
-        }
+        let marks = self.build_marks();
+        self.marks_version = marks_digest(&marks);
+        *self.marks.borrow_mut() = marks;
         self.sync_panel(app);
 
         // Delete anything we want deleted
@@ -1067,7 +1065,7 @@ impl Gameplay {
             StationModule { slot: 3 },
             ResourceStore {
                 resource: Resource::Oxygen,
-                amount: 10.0,
+                amount: 600.0,
                 capacity: 600.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1077,7 +1075,7 @@ impl Gameplay {
             StationModule { slot: 4 },
             ResourceStore {
                 resource: Resource::Hydrogen,
-                amount: 0.0,
+                amount: 100.0,
                 capacity: 100.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1175,7 +1173,7 @@ impl Gameplay {
             turn_progress: Rc::new(Cell::new(0.0)),
             calendar_string: Rc::new(RefCell::new(String::new())),
             marks: Rc::new(RefCell::new(vec![])),
-            marks_key: (event_queue.version(), 0),
+            marks_version: 0,
             transport_icon: Rc::new(Cell::new(Icon::Play)),
 
             current_et: Rc::new(Cell::new(EphemerisTime::epoch())),
@@ -2426,10 +2424,15 @@ impl Gameplay {
             .map(|s| s.modules_gen)
             .unwrap_or(0);
 
-        Some((sel, gen, self.event_queue.version(), self.job_state_bits()))
+        Some((
+            sel,
+            gen,
+            self.event_queue.version(),
+            self.panel_structure_bits(),
+        ))
     }
 
-    fn job_state_bits(&self) -> u64 {
+    fn panel_structure_bits(&self) -> u64 {
         let mut h = 0u64;
         for (e, f) in self.world.query::<&Factory>().iter() {
             let s = match (&f.current_job, f.pending_job) {
@@ -2437,11 +2440,7 @@ impl Gameplay {
                 (None, Some(_)) => 1,
                 _ => 0,
             };
-            h ^=
-                (e.id() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ s ^ ((f.enabled as u64) << 2);
-        }
-        for (e, el) in self.world.query::<&Electrolyzer>().iter() {
-            h ^= (e.id() as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (el.enabled as u64);
+            h ^= (e.id() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ s;
         }
         for (e, c) in self.world.query::<&Craft>().iter() {
             let s = match (&c.command, c.command_scheduled) {
@@ -3212,6 +3211,7 @@ impl Gameplay {
             }
         }
 
+        marks.sort_by_key(|m| m.t);
         marks
     }
 
@@ -3227,7 +3227,7 @@ impl Gameplay {
             ));
         }
 
-        limits.first().map(|(et, _, _)| *et)
+        limits.into_iter().map(|(et, _, _)| et).min()
     }
 
     fn craft_name_from_event(&self, event: &Event) -> (String, String) {
@@ -3724,7 +3724,7 @@ impl Gameplay {
     fn sync_panel(&mut self, app: &App) {
         let turn_key = Some((
             app.window_size,
-            self.marks_key,
+            self.marks_version,
             self.pause_reasons.first().map(|m| m.t),
         ));
         if turn_key != self.turn_gui_built_for {
