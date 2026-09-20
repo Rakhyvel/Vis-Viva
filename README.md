@@ -10,74 +10,74 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
 - [x] Dynamic UI elements
 - [x] station
   - [x] station entity with modules/components (start off hovering this! no factory/vab!)
-        x station cores have slots for modules, shown in the context menu
-        x has builtin batteries
+    - [x] station cores have slots for modules, shown in the context menu
+    - [x] has builtin batteries
   - [x] life support: power, O2, water
-        x Solar array as module payload slots, should probably start power-positive, but just barely
-        x water tanks
-        x H2 and O2 tanks, electrolysis module
+    - [x] Solar array as module payload slots, should probably start power-positive, but just barely
+    - [x] water tanks
+    - [x] H2 and O2 tanks, electrolysis module
   - [x] crew: consume O2 and water
   - [x] display time-to-zero (and time-to-fill)
   - [x] fabricator module: converts feedstock into parts
-        x metal as a part
-        x recipe data in the toml
-        x affordability function, shortfalls()
-        x modal shell with cards, read-only
-        x build button
-        x commits on Next Turn, not build
-        x Energy as a continuous draw
-        x gui_structure_key includes job state
-        x replace build button with progress bar, "Done by ... " text
-        x show inventory
+    - [x] metal as a part
+    - [x] recipe data in the toml
+    - [x] affordability function, shortfalls()
+    - [x] modal shell with cards, read-only
+    - [x] build button
+    - [x] commits on Next Turn, not build
+    - [x] Energy as a continuous draw
+    - [x] gui_structure_key includes job state
+    - [x] replace build button with progress bar, "Done by ... " text
+    - [x] show inventory
   - [x] force there to be a jupiter-analog
 - [ ] MVP stuff
   - [ ] better mission planning
-        x tell me in the mission planner UI if the lambert solver failed
-        x rendevouz maneuver
-        x porkchop plot: departure window, tof window, initialize with planner's choice
-        x add picker to porkchop plot
-        x theta
-        x don't offer "escape" if parent is the sun, etc
-        x labels, axes, numbers on the porkchop plot
-        x add departure time
-    - either tooltip or desc paragraph of what each maneuver kind means
-    - add critical events as diagonal lines on the porkchop plot
+    - [x] tell me in the mission planner UI if the lambert solver failed
+    - [x] rendevouz maneuver
+    - [x] porkchop plot: departure window, tof window, initialize with planner's choice
+    - [x] add picker to porkchop plot
+    - [x] theta
+    - [x] don't offer "escape" if parent is the sun, etc
+    - [x] labels, axes, numbers on the porkchop plot
+    - [x] add departure time
+    - [ ] either tooltip or desc paragraph of what each maneuver kind means
+    - [ ] add critical events as diagonal lines on the porkchop plot
   - [x] better time controls, speed control
-        x play becomes pause becomes play button
-        x fast forward and slow forward, show speed, powers of two days/sec
+    - [x] play becomes pause becomes play button
+    - [x] fast forward and slow forward, show speed, powers of two days/sec
   - [x] craft/body list
-        x bread crumbs (Mars > Deimos > Deimos Station) (upwards traversal)
-        x bodies have lists of other bodies and craft (downwards traversal)
+    - [x] bread crumbs (Mars > Deimos > Deimos Station) (upwards traversal)
+    - [x] bodies have lists of other bodies and craft (downwards traversal)
   - [x] better descriptions for things and what you're supposed to do. What is a "Dray", what is a "Pico", why do I want either?
   - [ ] better events/timeline
     - [x] event descs with full details, take me to the entity (station) that's built something
-          x resolve `craft: Entity` to the name of the craft
-          x store `label: &'static str` on `Burn`, get it from `Command::burn_schedule()`
-          x What part is complete? What were you building?
+      - [x] resolve `craft: Entity` to the name of the craft
+      - [x] store `label: &'static str` on `Burn`, get it from `Command::burn_schedule()`
+      - [x] What part is complete? What were you building?
     - [x] event list on left side, shows what's next, what's paused
     - [x] scissor timeline so that dates dont draw off the side
-    * make buttons/sliders pause automatically
-    * gotta figure out a way to include the year in the event list!!
-    * clicking event rows, or events on the timeline, takes you to the craft
+    - [ ] make buttons/sliders pause automatically
+    - [ ] gotta figure out a way to include the year in the event list!!
+    - [ ] clicking event rows, or events on the timeline, takes you to the craft
   - [ ] better craft info
-    - tell me the orbital elements for a craft/body
-      x tell how long until burns
-      x tell me what dv each burn costs
-      x tell me in the craft's mission where its going! I forgot!
+    - [ ] tell me the orbital elements for a craft/body
+    - [x] tell how long until burns
+    - [x] tell me what dv each burn costs
+    - [x] tell me in the craft's mission where its going! I forgot!
   - [x] better fabrication
-        x list byproducts
-        x gray out fully if a part is unbuildable
-        x gray out if 0 in the inventory
-        x mark some parts as un-fabricatable (ilmenite, station core) and don't list them
-        x fabricator shows power draw rate, completion date, and days-until-completion
+    - [x] list byproducts
+    - [x] gray out fully if a part is unbuildable
+    - [x] gray out if 0 in the inventory
+    - [x] mark some parts as un-fabricatable (ilmenite, station core) and don't list them
+    - [x] fabricator shows power draw rate, completion date, and days-until-completion
   - [x] make linepaths participate in occlusion again
   - [x] lose the game if the station dies
-    - stop ahead of depletion (30 days, 7 days, 1 day)
-  - [ ] basic mining
+    - [ ] stop ahead of depletion (30 days, 7 days, 1 day)
+  - [x] basic mining
     - [x] dray has water tank, mining module, battery
     - [x] when on surface, can mine, fills water tank, and STOPS before it overflows
     - [x] miner draws power
-    - [ ] changes the craft's weight!
+    - [x] changes the craft's weight!
   - [ ] docking
     - [ ] probably want another tab for docking ports, otherwise it gets crayzay
     - [ ] can dock if close enough, and a port is available

@@ -298,9 +298,9 @@ impl VabUi {
             line_path_entity: None,
         };
 
-        let twr = craft.twr()?;
+        let twr = craft.twr(todo!())?;
 
-        Some((craft.total_remaining_dv(), twr))
+        Some((craft.total_remaining_dv(todo!()), twr))
     }
 
     fn build_available_parts(&self, font: FontId, app: &App) -> Vec<Box<dyn Widget<VabMessages>>> {

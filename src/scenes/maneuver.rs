@@ -23,6 +23,7 @@ use crate::{
     components::{
         body::{Body, Parent, SceneObject},
         craft::{Command, Craft, Landed},
+        station::stored_mass_kg,
     },
     ui::{
         container::Container,
@@ -37,6 +38,7 @@ use crate::{
 use apricot::{app::App, font::FontId, render_core::TextureId};
 use hecs::{Entity, World};
 use nalgebra_glm::{vec2, Vec4};
+use num_format::Locale::cu;
 
 use crate::{
     container,
@@ -406,9 +408,10 @@ impl ManeuverModal {
         self.porkchop = self.compute_porkchop(craft, world);
 
         if let Some(chop) = &self.porkchop {
+            let cargo_kg = stored_mass_kg(world, craft, current_et);
             self.budget = world
                 .get::<&Craft>(craft)
-                .map(|c| c.total_remaining_dv())
+                .map(|c| c.total_remaining_dv(cargo_kg))
                 .unwrap_or(0.0)
                 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
             let bytes = self.porkchop_rgba(chop);
@@ -505,10 +508,14 @@ impl ManeuverModal {
             *self.inclination_text.borrow_mut() = inclination;
         }
 
+        let cargo_kg: f64 = self.computed_plan.as_ref().map_or_else(
+            || 0.0,
+            |p| stored_mass_kg(world, self.craft.unwrap(), p.departure_et()),
+        );
         let craft_dv = world
             .get::<&Craft>(self.craft.unwrap())
             .unwrap()
-            .total_remaining_dv();
+            .total_remaining_dv(cargo_kg);
 
         let can_afford_plan = self
             .computed_plan

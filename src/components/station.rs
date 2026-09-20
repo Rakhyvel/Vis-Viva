@@ -161,9 +161,9 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
         }
     }
 
-    let share = flow * store.capacity / capacity;
-    let dt_secs = (t - store.amount_et).as_secs() as f32;
-    (store.amount + share * dt_secs).clamp(0.0, store.capacity)
+    let share = (flow * store.capacity / capacity) as f64;
+    let dt_secs = (t - store.amount_et).as_secs();
+    (store.amount as f64 + share * dt_secs).clamp(0.0, store.capacity as f64) as f32
 }
 
 /// Returns (stored, capacity) of a given resource at a given time
@@ -311,6 +311,20 @@ pub fn next_reservoir_limits(
     ts.sort_by_key(|(t, _, _)| *t);
 
     ts
+}
+
+/// Mass of all stored resources.
+pub fn stored_mass_kg(world: &World, host: Entity, t: EphemerisTime) -> f64 {
+    let mut kg = 0.0;
+    for (module, (_, p, store)) in world
+        .query::<(&StationModule, &Parent, &ResourceStore)>()
+        .iter()
+    {
+        if p.id == host && store.resource != Resource::Energy {
+            kg += resource_store_amount(world, module, t) as f64
+        }
+    }
+    kg
 }
 
 fn pending_deduction(world: &World, station: Entity, registry: &PartRegistry, r: Resource) -> f32 {

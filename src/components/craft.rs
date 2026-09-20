@@ -111,17 +111,6 @@ pub enum BurnPurpose {
 }
 
 impl Command {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Command::Transfer { .. } => "Transfer",
-            Command::Flyby { .. } => "Flyby",
-            Command::Rendezvous { .. } => "Rendezvous",
-            Command::Escape { .. } => "Escape",
-            Command::Land { .. } => "Land",
-            Command::Launch { .. } => "Launch",
-        }
-    }
-
     pub fn burn_schedule(&self) -> Vec<ScheduledBurn> {
         match self {
             Command::Transfer { plan, .. } => vec![
@@ -402,21 +391,21 @@ pub fn replace_line_path(
 
 impl Craft {
     #[allow(dead_code)]
-    pub fn current_stage_dv(&self) -> f64 {
+    pub fn current_stage_dv(&self, cargo_kg: f64) -> f64 {
         let stage = self.stages_stack.last();
         if stage.is_none() {
             return 0.0;
         }
         let stage = stage.unwrap();
 
-        let m0 = self.total_mass();
+        let m0 = self.total_mass(cargo_kg);
         let mf = m0 - stage.fuel_mass;
 
         stage.isp * LITTLE_G * (m0 / mf).ln()
     }
 
-    pub fn total_remaining_dv(&self) -> f64 {
-        let mut total_mass = self.total_mass();
+    pub fn total_remaining_dv(&self, cargo_kg: f64) -> f64 {
+        let mut total_mass = self.total_mass(cargo_kg);
         let mut total_dv = 0.0;
 
         // iterate stages from last (burning) to first (payload)
@@ -431,7 +420,7 @@ impl Craft {
     }
 
     /// Returns the total mass of the spacecraft, in kg
-    pub fn total_mass(&self) -> f64 {
+    pub fn total_mass(&self, cargo_kg: f64) -> f64 {
         let payload_mass = self.payload.dry_mass;
 
         let stage_mass: f64 = self
@@ -440,19 +429,19 @@ impl Craft {
             .map(|s| s.dry_mass + s.fuel_mass)
             .sum();
 
-        payload_mass + stage_mass
+        payload_mass + stage_mass + cargo_kg
     }
 
-    pub fn twr(&self) -> Option<f64> {
-        let total_mass_kg = self.total_mass();
+    pub fn twr(&self, cargo_kg: f64) -> Option<f64> {
+        let total_mass_kg = self.total_mass(cargo_kg);
         let bottom_stage = self.stages_stack.last()?;
         let thrust_n = bottom_stage.thrust_kn * 1000.0;
         Some(thrust_n / (total_mass_kg * 9.81))
     }
 
-    pub fn burn(&mut self, mut requested_dv: f64) {
+    pub fn burn(&mut self, mut requested_dv: f64, cargo_kg: f64) {
         while requested_dv > 0.0 {
-            let m0 = self.total_mass();
+            let m0 = self.total_mass(cargo_kg);
 
             let stage = match self.stages_stack.last_mut() {
                 Some(s) => s,

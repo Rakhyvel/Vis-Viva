@@ -40,9 +40,9 @@ use crate::{
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
-            station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
-            Electrolyzer, Miner, ModuleHost, Resource, ResourceStore, SolarPanel, Station,
-            StationModule,
+            station_r_au, station_resource_amount_flow, station_resource_totals, stored_mass_kg,
+            take_resource, Electrolyzer, Miner, ModuleHost, Resource, ResourceStore, SolarPanel,
+            Station, StationModule,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },
@@ -1496,7 +1496,7 @@ impl Gameplay {
 
         let craft = self.world.get::<&Craft>(selected).unwrap();
 
-        let craft_dv = craft.total_remaining_dv();
+        let craft_dv_text = Rc::new(RefCell::new(String::new()));
 
         let is_idle = craft.command.is_none();
 
@@ -1560,7 +1560,7 @@ impl Gameplay {
         widgets.push(Box::new(Label::new("STAGES").font(font_small_bold, app)));
 
         widgets.push(Box::new(
-            Label::new(format!("Total dv: {:.0} m/s", craft_dv))
+            Label::bound(craft_dv_text.clone())
                 .font(font, app)
                 .color(STYLE.text),
         ));
@@ -1595,6 +1595,23 @@ impl Gameplay {
         }
 
         out.widgets = widgets;
+
+        out.bindings.push(Binding::new({
+            let craft_dv_text = craft_dv_text.clone();
+            let now = self.current_et.clone();
+            move |world: &World| {
+                let Ok(craft) = world.get::<&Craft>(selected) else {
+                    return;
+                };
+                let cargo_kg = stored_mass_kg(world, selected, now.get());
+                let craft_dv = craft.total_remaining_dv(cargo_kg);
+                let s = format!("Total dv: {:.0} m/s", craft_dv);
+                if *craft_dv_text.borrow() != s {
+                    *craft_dv_text.borrow_mut() = s;
+                }
+            }
+        }));
+
         out
     }
 
@@ -2802,9 +2819,10 @@ impl Gameplay {
                         AssociatedEntity { associate: craft },
                     )),
                 );
+                let cargo_kg = stored_mass_kg(&self.world, craft, self.current_et.get());
                 {
                     let mut craft_component = self.world.get::<&mut Craft>(craft).unwrap();
-                    craft_component.burn(dv);
+                    craft_component.burn(dv, cargo_kg);
                 }
                 self.world.remove_one::<State>(craft).ok();
                 self.world
@@ -3733,8 +3751,12 @@ impl Gameplay {
         ));
         if turn_key != self.turn_gui_built_for {
             self.turn_gui_built_for = turn_key;
+            let prev_footer_h = self.turn_gui.size().y;
             self.turn_gui = self.rebuild_turn_gui(app);
-            self.gui_built_for = None;
+            if self.turn_gui.size().y != prev_footer_h {
+                // Only update the selection if the footer changes
+                self.gui_built_for = None;
+            }
         }
 
         let key = self.gui_structure_key();

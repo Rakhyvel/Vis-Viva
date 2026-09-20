@@ -19,7 +19,7 @@ dry_mass_kg = 500.0
 energy_kwh = 7#200.0
 #inputs = {metal = 4}
 [parts.fuel]
-max_fuel_mass_kg = 600.0
+max_fuel_mass_kg = 875.0
 isp = 450.0
 thrust_kn = 1.0
 
