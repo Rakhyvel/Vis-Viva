@@ -79,16 +79,23 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] miner draws power
     - [x] changes the craft's weight!
   - [ ] docking
-    - [ ] probably want another tab for docking ports, otherwise it gets crayzay
-    - [ ] can dock if close enough, and a port is available
+    - [x] can dock if close enough
+    - [ ] docking ports
+      - [ ] ports: u32 on PartDef
+      - [ ] docked craft take up a port
+      - [ ] a dock is refused if the host or target has no free port
+    - [ ] list of ports, and what's docked to what or not
+      - [ ] make this a tab, if things get too hard to see
     - [ ] can undock
+    - [ ] docked craft contribute mass to the host's burns
     - [ ] fabricating a craft takes up a docking spot, open the station's docking tab on completion
       - [ ] If we make this the same requirement for modules, modules could just take up slots, the same as craft
-    - [ ] retire stages/payloads
+    - [ ] get rid of the stage/payload distinction, just have parts and craft and modules
   - [ ] resource transfer
     - [ ] Dray and Pico have actual H2 and O2 tanks, taken from by engines
     - [ ] resource transfer modal
-    - [ ] dont just take H2 and O2, transfer to craft
+      - [ ] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
+    - [ ] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Mining && ISRU
   - [x] Ilmetite smelting (just give generic "metal" for MVP)
   - [x] station rendevous

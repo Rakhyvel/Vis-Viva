@@ -48,6 +48,14 @@ pub enum Event {
         craft: Entity,
     },
 
+    /// At this event, the craft is no longer in an orbital trajectory and is docked with the parent craft
+    Dock {
+        /// The craft that this event applies to
+        craft: Entity,
+        /// The craft to dock to
+        with: Entity,
+    },
+
     FactoryComplete {
         craft: Entity,
         part_id: u64,

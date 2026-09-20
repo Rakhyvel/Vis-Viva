@@ -85,6 +85,10 @@ pub enum Command {
         on: Entity,
         plan: LandingPlan,
     },
+    Dock {
+        with: Entity,
+        arrive_et: EphemerisTime,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -193,6 +197,9 @@ impl Command {
                     dv: plan.circ_dv,
                 },
             ],
+            Command::Dock { .. } => vec![
+                // no burns technically
+            ],
         }
     }
 
@@ -204,7 +211,10 @@ impl Command {
                 ("Leaves SOI", plan.exit_state.t),
             ],
             Command::Escape { plan, .. } => vec![("Leaves SOI", plan.exit_state.t)],
-            Command::Land { .. } | Command::Launch { .. } | Command::Rendezvous { .. } => vec![],
+            Command::Land { .. }
+            | Command::Launch { .. }
+            | Command::Rendezvous { .. }
+            | Command::Dock { .. } => vec![],
         }
     }
 
@@ -216,6 +226,7 @@ impl Command {
             Command::Escape { from, .. } => ("Escape from", *from),
             Command::Land { on, .. } => ("Land on", *on),
             Command::Launch { from, .. } => ("Launch from", *from),
+            Command::Dock { with, .. } => ("Dock with", *with),
         }
     }
 }
@@ -223,6 +234,8 @@ impl Command {
 pub struct Landed {
     pub offset: DVec3,
 }
+
+pub struct Docked {}
 
 pub fn spawn_landed_craft(
     payload: Payload,

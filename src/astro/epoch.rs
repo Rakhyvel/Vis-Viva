@@ -1,11 +1,10 @@
-use std::{
-    fmt::format,
-    ops::{Add, AddAssign, Div, Mul, Sub},
-};
+use std::ops::{Add, AddAssign, Div, Mul, Sub};
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
 
-use crate::astro::units::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_YEAR};
+use crate::astro::units::{
+    SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_YEAR,
+};
 
 /// Represents a duration in microseconds. Should allow for ~292,000 years future and past.
 ///
@@ -15,8 +14,9 @@ pub struct EphemerisTime(i64);
 
 pub const ET_PER_SECOND: f64 = 1_000_000.0;
 #[allow(dead_code)]
-const ET_PER_DAY: f64 = SECONDS_PER_DAY * ET_PER_SECOND;
 const ET_PER_YEAR: f64 = SECONDS_PER_YEAR * ET_PER_SECOND;
+const ET_PER_DAY: f64 = SECONDS_PER_DAY * ET_PER_SECOND;
+const ET_PER_MINUTE: f64 = SECONDS_PER_MINUTE * ET_PER_SECOND;
 const ET_PER_HOUR: f64 = SECONDS_PER_HOUR * ET_PER_SECOND;
 
 impl EphemerisTime {
@@ -31,6 +31,10 @@ impl EphemerisTime {
     #[allow(dead_code)]
     pub fn from_days(days: f64) -> Self {
         Self((days * ET_PER_DAY) as i64)
+    }
+
+    pub fn from_mins(mins: f64) -> Self {
+        Self((mins * ET_PER_MINUTE) as i64)
     }
 
     pub fn from_secs(secs: f64) -> Self {

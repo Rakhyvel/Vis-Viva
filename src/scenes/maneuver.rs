@@ -18,7 +18,7 @@ use crate::{
             flyby_porkchop, plan_flyby_at, plan_transfer_at, transfer_porkchop, FlybyPlan,
             TransferPlan,
         },
-        units::{G, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
+        units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
     components::{
         body::{Body, Parent, SceneObject},
@@ -38,7 +38,6 @@ use crate::{
 use apricot::{app::App, font::FontId, render_core::TextureId};
 use hecs::{Entity, World};
 use nalgebra_glm::{vec2, Vec4};
-use num_format::Locale::cu;
 
 use crate::{
     container,
@@ -104,12 +103,14 @@ enum ManeuverKind {
     Land,
     Launch,
     Rendezvous,
+    Dock,
 }
 
 #[derive(PartialEq, Clone, Copy)]
 enum TargetKind {
     Body,
     Craft,
+    CoLocatedCraft,
 }
 
 struct ManeuverOptions {
@@ -119,6 +120,8 @@ struct ManeuverOptions {
     can_escape: bool,
     bodies: Vec<(Entity, String)>,
     crafts: Vec<(Entity, String)>,
+    /// Vec of craft that have the same position and velocity
+    co_located: Vec<(Entity, String)>,
 }
 
 impl ManeuverKind {
@@ -130,6 +133,7 @@ impl ManeuverKind {
             ManeuverKind::Land,
             ManeuverKind::Launch,
             ManeuverKind::Rendezvous,
+            ManeuverKind::Dock,
         ]
     }
 
@@ -145,6 +149,7 @@ impl ManeuverKind {
             ManeuverKind::Land => o.is_orbiting && o.parent_is_solid,
             ManeuverKind::Launch => o.is_landed,
             ManeuverKind::Rendezvous => o.is_orbiting && !o.crafts.is_empty(),
+            ManeuverKind::Dock => o.is_orbiting && !o.co_located.is_empty(),
         }
     }
 
@@ -156,6 +161,7 @@ impl ManeuverKind {
             ManeuverKind::Land => "Land",
             ManeuverKind::Launch => "Launch",
             ManeuverKind::Rendezvous => "Rendezvous",
+            ManeuverKind::Dock => "Dock",
         }
     }
 
@@ -163,6 +169,7 @@ impl ManeuverKind {
         match self {
             ManeuverKind::Transfer | ManeuverKind::Flyby => Some(TargetKind::Body),
             ManeuverKind::Rendezvous => Some(TargetKind::Craft),
+            ManeuverKind::Dock => Some(TargetKind::CoLocatedCraft),
             ManeuverKind::Escape | ManeuverKind::Land | ManeuverKind::Launch => None,
         }
     }
@@ -195,6 +202,11 @@ pub enum ManeuverResult {
         from: Entity,
         plan: LaunchPlan,
     },
+    Dock {
+        with: Entity,
+        depart_et: EphemerisTime,
+        arrive_et: EphemerisTime,
+    },
 }
 
 impl ManeuverResult {
@@ -206,6 +218,7 @@ impl ManeuverResult {
             ManeuverResult::Escape { plan, .. } => plan.escape_dv,
             ManeuverResult::Land { plan, .. } => plan.deorbit_dv + plan.landing_dv,
             ManeuverResult::Launch { plan, .. } => plan.launch_dv + plan.circ_dv,
+            ManeuverResult::Dock { .. } => 0.0,
         }
     }
 
@@ -217,6 +230,7 @@ impl ManeuverResult {
             ManeuverResult::Escape { plan, .. } => plan.escape_burn.t,
             ManeuverResult::Land { plan, .. } => plan.deorbit_burn.t,
             ManeuverResult::Launch { plan, .. } => plan.launch_burn.t,
+            ManeuverResult::Dock { depart_et, .. } => *depart_et,
         }
     }
 
@@ -228,6 +242,7 @@ impl ManeuverResult {
             ManeuverResult::Escape { plan, .. } => plan.exit_state.t,
             ManeuverResult::Land { plan, .. } => plan.landing_burn.t,
             ManeuverResult::Launch { plan, .. } => plan.circ_burn.t,
+            ManeuverResult::Dock { arrive_et, .. } => *arrive_et,
         }
     }
 
@@ -243,6 +258,9 @@ impl ManeuverResult {
             ManeuverResult::Escape { to, from, plan } => Command::Escape { to, from, plan },
             ManeuverResult::Land { on, plan } => Command::Land { on, plan },
             ManeuverResult::Launch { from, plan } => Command::Launch { from, plan },
+            ManeuverResult::Dock {
+                with, arrive_et, ..
+            } => Command::Dock { with, arrive_et },
         }
     }
 }
@@ -286,7 +304,7 @@ impl ManeuverModal {
         self.selected_date = current_et;
         self.computed_plan = None;
 
-        self.rebuild(world, app);
+        self.rebuild(current_et, world, app);
         self.modal.set_shown(true);
     }
 
@@ -315,7 +333,7 @@ impl ManeuverModal {
                     self.selected_kind = Some(maneuver_kind);
                     self.refresh_window(craft, current_et, world);
                     self.refresh_chop(craft, current_et, world, app, true);
-                    self.rebuild(world, app)
+                    self.rebuild(current_et, world, app)
                 }
                 ManeuverMessages::SelectDestination(entity) => {
                     self.selected_destination = Some(entity);
@@ -539,7 +557,7 @@ impl ManeuverModal {
         self.modal.render(app);
     }
 
-    pub fn rebuild(&mut self, world: &World, app: &App) {
+    pub fn rebuild(&mut self, current_et: EphemerisTime, world: &World, app: &App) {
         let font = app.renderer.get_font_id_from_name("font").unwrap();
         let font_small_bold: FontId = app
             .renderer
@@ -564,6 +582,7 @@ impl ManeuverModal {
             can_escape: world.get::<&Parent>(parent).is_ok(),
             bodies: self.get_body_destinations(craft, world),
             crafts: self.get_craft_destinations(craft, world),
+            co_located: self.get_craft_colocated(craft, current_et, world),
         };
 
         if self.selected_kind.is_some_and(|k| !k.available(&opts)) {
@@ -577,6 +596,7 @@ impl ManeuverModal {
                 .is_some_and(|tk| match tk {
                     TargetKind::Body => opts.bodies.iter().any(|(e, _)| *e == dest),
                     TargetKind::Craft => opts.crafts.iter().any(|(e, _)| *e == dest),
+                    TargetKind::CoLocatedCraft => opts.co_located.iter().any(|(e, _)| *e == dest),
                 });
             if !still_valid {
                 self.selected_destination = None;
@@ -617,6 +637,7 @@ impl ManeuverModal {
                 let destinations = match target_kind {
                     TargetKind::Body => opts.bodies,
                     TargetKind::Craft => opts.crafts,
+                    TargetKind::CoLocatedCraft => opts.co_located,
                 };
                 let selected_dest_idx = self
                     .selected_destination
@@ -772,6 +793,44 @@ impl ManeuverModal {
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
             .map(|(entity, (_state, _body, scene_obj, _parent))| (entity, scene_obj.name.clone()))
+            .collect()
+    }
+
+    fn get_craft_colocated(
+        &self,
+        craft: Entity,
+        current_et: EphemerisTime,
+        world: &World,
+    ) -> Vec<(Entity, String)> {
+        // Gotta be within 10 km and 1 m/s
+        const DOCKING_RANGE: f64 = 10.0 / KM_PER_EARTH_RADIUS;
+        const DOCKING_SPEED: f64 = 1.0 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
+
+        let parent = world
+            .get::<&Parent>(craft)
+            .expect("craft should have parent")
+            .id;
+        let mu = world.get::<&Body>(parent).expect("parent must be body").mu;
+
+        let Some(this) = world
+            .get::<&State>(craft)
+            .ok()
+            .and_then(|s| s.propagate(current_et, mu).ok())
+        else {
+            return vec![];
+        };
+
+        // this already excludes landed craft, since they don't have State
+        let mut binding = world.query::<(&State, &Craft, &SceneObject, &Parent)>();
+        binding
+            .iter()
+            .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
+            .filter_map(|(entity, (other_state, _, scene_obj, _))| {
+                let other = other_state.propagate(current_et, mu).ok()?;
+                let dr = (other.r - this.r).magnitude();
+                let dv = (other.v - this.v).magnitude();
+                (dr < DOCKING_RANGE && dv < DOCKING_SPEED).then(|| (entity, scene_obj.name.clone()))
+            })
             .collect()
     }
 
@@ -977,6 +1036,18 @@ impl ManeuverModal {
                 )
                 .ok()?;
                 Some(ManeuverResult::Launch { from: parent, plan })
+            }
+            ManeuverKind::Dock => {
+                let with = self.selected_destination?;
+
+                let depart_et = current_et + EphemerisTime::from_secs(5.0);
+                let arrive_et = current_et + EphemerisTime::from_mins(30.0);
+
+                Some(ManeuverResult::Dock {
+                    with,
+                    depart_et,
+                    arrive_et,
+                })
             }
         }
     }

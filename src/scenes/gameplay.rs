@@ -77,7 +77,7 @@ use crate::{
 use crate::{
     components::{
         body::{spawn_body, Body, Category, Parent, SceneObject},
-        craft::{spawn_landed_craft, Craft, Landed},
+        craft::{spawn_landed_craft, Craft, Docked, Landed},
         icosphere,
     },
     generation::solar_system_gen::{self},
@@ -2743,6 +2743,19 @@ impl Gameplay {
                     self.event_queue
                         .push(land_time, Event::CompleteCommand { craft: entity });
                 }
+                Command::Dock {
+                    with, arrive_et, ..
+                } => {
+                    self.event_queue.push(
+                        arrive_et,
+                        Event::Dock {
+                            craft: entity,
+                            with,
+                        },
+                    );
+                    self.event_queue
+                        .push(arrive_et, Event::CompleteCommand { craft: entity });
+                }
             }
         }
     }
@@ -2861,6 +2874,20 @@ impl Gameplay {
                 replace_line_path(&mut self.world, &app.renderer, craft, None);
                 commit_station(&self.world, craft, self.current_et.get());
                 self.world.insert_one(craft, Landed { offset }).unwrap();
+            }
+            Event::Dock { craft, with } => {
+                self.selection.set_selected(craft, app.seconds as f64);
+
+                // re-parent to the station
+                {
+                    let mut parent = self.world.get::<&mut Parent>(craft).unwrap();
+                    parent.id = with;
+                }
+
+                self.world.remove_one::<State>(craft).ok();
+                replace_line_path(&mut self.world, &app.renderer, craft, None);
+                commit_station(&self.world, craft, self.current_et.get());
+                self.world.insert_one(craft, Docked {}).unwrap();
             }
             Event::CompleteCommand { craft } => {
                 let mut craft = self.world.get::<&mut Craft>(craft).unwrap();
@@ -3087,8 +3114,8 @@ impl Gameplay {
         drop(world_pos);
 
         if let Some(kids) = children.get(&entity) {
+            let mu = self.world.get::<&Body>(entity).map(|b| b.mu).unwrap_or(0.0);
             for &child in kids {
-                let mu = { self.world.get::<&mut Body>(entity).unwrap().mu };
                 self.propagate(children, child, new_world, mu, t);
             }
         }
@@ -3259,7 +3286,7 @@ impl Gameplay {
                 (scene_obj.name.clone(), desc.to_string())
             }
 
-            Event::Launch { craft } | Event::Land { craft } => {
+            Event::Launch { craft } | Event::Land { craft } | Event::Dock { craft, .. } => {
                 let scene_obj = self.world.get::<&SceneObject>(*craft).unwrap();
                 (scene_obj.name.clone(), "???".to_string())
             }

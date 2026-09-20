@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    f32::consts::FRAC_PI_2,
+    f32::consts::{FRAC_PI_2, PI},
     hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
 };
@@ -65,6 +65,7 @@ pub enum MarkKind {
     SoiChange,
     Launch,
     Land,
+    Dock,
     FactoryComplete,
     Critical,
     Good,
@@ -101,6 +102,8 @@ impl MarkKind {
 
             Event::FactoryComplete { .. } => Some(MarkKind::FactoryComplete),
 
+            Event::Dock { .. } => Some(MarkKind::Dock),
+
             // The burns for these events already display these
             Event::Launch { .. } | Event::Land { .. } => None,
             // Don't show this to the player
@@ -115,10 +118,13 @@ impl MarkKind {
             MarkKind::Burn => oklch(MARK_L, MARK_C, 60.0, 1.0),
             MarkKind::Launch => oklch(MARK_L, MARK_C, 60.0, 1.0),
             MarkKind::Land => oklch(MARK_L, MARK_C, 60.0, 1.0),
+            MarkKind::Dock => oklch(MARK_L, MARK_C, 204.0, 1.0),
             MarkKind::SoiChange => oklch(MARK_L, MARK_C, 265.0, 1.0),
             MarkKind::FactoryComplete => oklch(MARK_L, MARK_C, 330.0, 1.0),
-            MarkKind::Critical => oklch(0.6, 0.22, 25.0, 1.0),
             MarkKind::Good => oklch(MARK_L, MARK_C, 144.0, 1.0),
+
+            // Different lightness and chroma to stand out
+            MarkKind::Critical => oklch(0.6, 0.22, 25.0, 1.0),
         }
     }
 
@@ -128,6 +134,7 @@ impl MarkKind {
             MarkKind::SoiChange => "SOI Crossing",
             MarkKind::Launch => "Launch",
             MarkKind::Land => "Land",
+            MarkKind::Dock => "Dock",
             MarkKind::FactoryComplete => "Part Complete",
             MarkKind::Critical => "CRITICAL!",
             MarkKind::Good => "Info",
@@ -163,6 +170,13 @@ impl MarkKind {
                     .get_mesh_id_from_name("triangle-outline")
                     .unwrap(),
                 -FRAC_PI_2,
+            ),
+            MarkKind::Dock => (
+                // I want a better one than this one
+                app.renderer
+                    .get_mesh_id_from_name("triangle-outline")
+                    .unwrap(),
+                PI,
             ),
             MarkKind::FactoryComplete => (
                 // like a box
