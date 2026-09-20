@@ -118,6 +118,12 @@ pub fn station_net_watts(world: &World, station: Entity) -> f32 {
             w -= el.power_watts;
         }
     }
+    for (_, (_, parent, miner)) in world.query::<(&StationModule, &Parent, &Miner)>().iter() {
+        let running = miner.is_running(world, parent.id);
+        if parent.id == station && running {
+            w -= miner.power_watts;
+        }
+    }
 
     w
 }
@@ -363,6 +369,16 @@ pub struct Miner {
     /// How power much this miner draws when on
     pub power_watts: f32,
     pub kg_per_s: f32,
+}
+
+impl Miner {
+    pub fn is_running(&self, world: &World, host: Entity) -> bool {
+        if world.get::<&Landed>(host).is_err() {
+            return false;
+        }
+
+        self.enabled
+    }
 }
 
 pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {

@@ -26,7 +26,8 @@ thrust_kn = 1.0
 [[parts.modules]]
 kind = "store"
 resource = "energy"
-capacity = 500.0
+amount = 5_000_000.0
+capacity = 5_000_000.0
 
 [[parts.modules]]
 kind = "store"

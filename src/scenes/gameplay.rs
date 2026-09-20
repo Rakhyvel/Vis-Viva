@@ -2960,11 +2960,15 @@ impl Gameplay {
             let slot = StationModule { slot: slot as u32 };
             let parent = Parent { id: craft };
             match *spec {
-                ModuleSpec::Store { resource, capacity } => self.world.spawn((
+                ModuleSpec::Store {
+                    resource,
+                    amount,
+                    capacity,
+                } => self.world.spawn((
                     slot,
                     ResourceStore {
                         resource,
-                        amount: 0.0,
+                        amount,
                         capacity,
                         amount_et: now,
                     },

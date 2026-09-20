@@ -84,8 +84,16 @@ pub struct PartCost {
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModuleSpec {
-    Store { resource: Resource, capacity: f32 },
-    Miner { power_watts: f32, kg_per_s: f32 },
+    Store {
+        resource: Resource,
+        #[serde(default)]
+        amount: f32,
+        capacity: f32,
+    },
+    Miner {
+        power_watts: f32,
+        kg_per_s: f32,
+    },
 }
 
 impl PartRegistry {
