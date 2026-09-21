@@ -5,6 +5,7 @@ desc = "Core of the station."
 dry_mass_kg = 676767676767.0
 energy_kwh = 100000.0
 fabricatable = false
+ports = 8
 
 
 [[parts]]

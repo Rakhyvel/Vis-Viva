@@ -1,10 +1,12 @@
 [[parts]]
 id = 'pico'
 name = 'Pico'
-desc = 'A tiny probe. Carries sensors and not much else. Use it to scout bodies for resources.'
+desc = 'A tiny disposable probe. Carries sensors and not much else. Use it to scout bodies for resources.'
 dry_mass_kg = 12.0
 energy_kwh = 1800.0
 inputs = {metal = 2}
+ports = 0 # no ports, disposable
+
 [parts.fuel]
 max_fuel_mass_kg = 8.0
 isp = 450.0
@@ -18,6 +20,8 @@ desc = 'Can land on bodies, mine resources like water ice and Ilmenite, and brin
 dry_mass_kg = 500.0
 energy_kwh = 7#200.0
 #inputs = {metal = 4}
+ports = 1
+
 [parts.fuel]
 max_fuel_mass_kg = 875.0
 isp = 450.0

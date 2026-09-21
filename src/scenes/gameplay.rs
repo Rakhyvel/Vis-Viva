@@ -41,7 +41,7 @@ use crate::{
         station::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
             station_r_au, station_resource_amount_flow, station_resource_totals, stored_mass_kg,
-            take_resource, Electrolyzer, Miner, ModuleHost, Resource, ResourceStore, SolarPanel,
+            take_resource, Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel,
             Station, StationModule,
         },
         tile::{SurfaceTile, TileMap, TileSets},
@@ -1031,7 +1031,10 @@ impl Gameplay {
                 station,
                 (
                     Station { num_crew: 2 },
-                    ModuleHost { modules_gen: 0 },
+                    PortHost {
+                        dock_gen: 0,
+                        ports: 8,
+                    },
                     starting_inventory,
                 ),
             )
@@ -1473,7 +1476,7 @@ impl Gameplay {
             out.merge(self.body_selection(selected, app));
         }
 
-        if self.world.get::<&ModuleHost>(selected).is_ok() {
+        if self.world.get::<&PortHost>(selected).is_ok() {
             out.merge(self.module_list(selected, app));
         }
 
@@ -2437,8 +2440,8 @@ impl Gameplay {
         let sel = self.selection.selected_entity()?;
         let gen = self
             .world
-            .get::<&ModuleHost>(sel)
-            .map(|s| s.modules_gen)
+            .get::<&PortHost>(sel)
+            .map(|s| s.dock_gen)
             .unwrap_or(0);
 
         Some((
@@ -2508,10 +2511,7 @@ impl Gameplay {
             }
 
             // update for module ui
-            self.world
-                .get::<&mut ModuleHost>(station)
-                .unwrap()
-                .modules_gen += 1;
+            self.world.get::<&mut PortHost>(station).unwrap().dock_gen += 1;
         }
     }
 
@@ -2901,7 +2901,7 @@ impl Gameplay {
     }
 
     fn commit_station(&self) {
-        for (station, _) in self.world.query::<&ModuleHost>().iter() {
+        for (station, _) in self.world.query::<&PortHost>().iter() {
             commit_station(&self.world, station, self.current_et.get());
         }
     }
@@ -2998,7 +2998,13 @@ impl Gameplay {
         );
 
         self.world
-            .insert_one(craft, ModuleHost { modules_gen: 0 })
+            .insert_one(
+                craft,
+                PortHost {
+                    dock_gen: 0,
+                    ports: def.ports,
+                },
+            )
             .unwrap();
 
         for (slot, spec) in def.modules.iter().enumerate() {
@@ -3208,7 +3214,7 @@ impl Gameplay {
         }
 
         // Add projected reservoir limit events, Depleted and Filled
-        for (entity, (_, scene_obj)) in self.world.query::<(&ModuleHost, &SceneObject)>().iter() {
+        for (entity, (_, scene_obj)) in self.world.query::<(&PortHost, &SceneObject)>().iter() {
             for (et, resource, rate) in next_reservoir_limits(
                 &self.world,
                 entity,
@@ -3266,7 +3272,7 @@ impl Gameplay {
 
     fn next_station_limit(&self, now: EphemerisTime) -> Option<EphemerisTime> {
         let mut limits = vec![];
-        for (entity, _) in self.world.query::<&ModuleHost>().iter() {
+        for (entity, _) in self.world.query::<&PortHost>().iter() {
             limits.extend(next_reservoir_limits(
                 &self.world,
                 entity,

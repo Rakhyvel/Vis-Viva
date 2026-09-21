@@ -18,10 +18,11 @@ pub struct Station {
     pub num_crew: usize,
 }
 
-pub struct ModuleHost {
-    /// bumped whenever a module is added or removed
-    /// TODO: May want to rework when we can jettison modules, and dock and undock from the same ports
-    pub modules_gen: u32,
+pub struct PortHost {
+    /// bumped whenever something is docked or undocked
+    pub dock_gen: u32,
+
+    pub ports: u32,
 }
 
 pub fn station_r_au(world: &World, station: Entity) -> f64 {

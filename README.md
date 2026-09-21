@@ -81,7 +81,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
   - [ ] docking
     - [x] can dock if close enough
     - [ ] docking ports
-      - [ ] ports: u32 on PartDef
+      - [x] ports: u32 on PartDef
       - [ ] docked craft take up a port
       - [ ] a dock is refused if the host or target has no free port
     - [ ] list of ports, and what's docked to what or not

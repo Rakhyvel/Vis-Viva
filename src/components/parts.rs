@@ -13,6 +13,7 @@ use crate::{
 
 /// A file full of parts definitions
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PartFile {
     parts: Vec<PartRaw>,
 }
@@ -36,6 +37,8 @@ pub struct PartRaw {
     #[serde(default = "default_true")]
     fabricatable: bool,
     #[serde(default)]
+    ports: u32,
+    #[serde(default)]
     modules: Vec<ModuleSpec>,
 }
 
@@ -45,6 +48,7 @@ fn default_true() -> bool {
 
 /// On-wire spec for fuel, for stages
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FuelSpec {
     pub max_fuel_mass_kg: f64,
     pub isp: f64,
@@ -71,6 +75,7 @@ pub struct PartDef {
     pub cost: PartCost,
     pub fuel: Option<FuelSpec>,
 
+    pub ports: u32,
     pub modules: Vec<ModuleSpec>,
 }
 
@@ -83,6 +88,7 @@ pub struct PartCost {
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub enum ModuleSpec {
     Store {
         resource: Resource,
@@ -162,6 +168,7 @@ impl PartRegistry {
                 id: raw.id,
                 name: raw.name,
                 desc: raw.desc,
+                ports: raw.ports,
                 modules: raw.modules,
             };
             let res = parts.insert(id_hash(&def.id), def).is_none();
