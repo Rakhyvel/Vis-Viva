@@ -84,7 +84,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
       - [x] ports: u32 on PartDef
       - [x] docked craft take up a port
       - [x] a dock is refused if the host or target has no free port
-    - [ ] breadcrumbs list stations for docked craft
+    - [x] breadcrumbs list stations for docked craft
     - [ ] disable maneuvers for docked craft (maybe replace with extra "undock" button)
     - [ ] docked craft card, with link to select craft, undock button
     - [ ] docked craft contribute mass to the host's burns

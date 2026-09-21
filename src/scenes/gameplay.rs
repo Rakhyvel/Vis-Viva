@@ -28,7 +28,10 @@ use crate::{
         epoch::EphemerisTime,
         maneuver::sphere_of_influence,
         state::State,
-        units::{EARTH_RADII_PER_AU, KM_PER_EARTH_RADIUS, SUN_MU},
+        units::{
+            EARTH_RADII_PER_AU, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR,
+            SUN_MU,
+        },
     },
     components::{
         craft::{
@@ -183,6 +186,9 @@ pub enum CommandMessages {
     },
     CancelCommand {
         craft: Entity,
+    },
+    Undock {
+        entity: Entity,
     },
     SelectEntity {
         entity: Entity,
@@ -473,6 +479,9 @@ impl Scene for Gameplay {
                         self.commit_station();
                         let mut miner = self.world.get::<&mut Miner>(miner_entity).unwrap();
                         miner.enabled = !miner.enabled;
+                    }
+                    CommandMessages::Undock { entity } => {
+                        self.undock(entity, app);
                     }
                     CommandMessages::SelectEntity { entity } => {
                         self.selection.set_selected(entity, app.seconds as f64);
@@ -1521,85 +1530,34 @@ impl Gameplay {
             .renderer
             .get_font_id_from_name("font-small-bold")
             .unwrap();
-        let font_small_italic = app
-            .renderer
-            .get_font_id_from_name("font-small-italic")
-            .unwrap();
 
         let craft = self.world.get::<&Craft>(selected).unwrap();
 
         let craft_dv_text = Rc::new(RefCell::new(String::new()));
 
-        let is_idle = craft.command.is_none();
-
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> =
-            vec![Box::new(Label::new("MISSION").font(font_small_bold, app))];
-
-        if let Some(command) = &craft.command {
-            let (verb, target) = command.title_parts();
-            let name = self
-                .world
-                .get::<&SceneObject>(target)
-                .ok()
-                .map(|s| s.name.clone())
-                .unwrap_or_else(|| "???".into());
-
-            let title = format!("{verb} {name}").to_uppercase();
-
-            let header = if craft.command_scheduled {
-                title
-            } else {
-                format!("{} - QUEUED", title)
-            };
-            widgets.push(Box::new(
-                Label::new(header)
-                    .font(font_small_bold, app)
-                    .color(STYLE.accent),
-            ));
-
-            for burn in command.burn_schedule() {
-                let card = self.burn_card(&burn, app);
-                widgets.extend(card.widgets);
-                out.bindings.extend(card.bindings);
-            }
-
-            if !craft.command_scheduled {
-                widgets.push(Box::new(
-                    Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Cancel Mission")
-                        .use_style(&STYLE)
-                        .bound_active(self.controls_enabled.clone())
-                        .on_click(CommandMessages::CancelCommand { craft: selected }),
-                ));
-            }
+        if let Ok(_) = self.world.get::<&Docking>(selected) {
+            out.push(
+                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Undock")
+                    .use_style(&STYLE)
+                    .bound_active(self.controls_enabled.clone())
+                    .on_click(CommandMessages::Undock { entity: selected }),
+            );
         } else {
-            widgets.push(Box::new(
-                Label::new("NO MISSION ASSIGNED")
-                    .font(font_small_italic, app)
-                    .color(STYLE.text_disabled),
-            ));
+            out.merge(self.mission_section(selected, app));
         }
 
-        if is_idle {
-            widgets.push(Box::new(
-                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Plan Mission...")
-                    .use_style_accented(&STYLE)
-                    .on_click(CommandMessages::OpenManeuver),
-            ))
-        };
-        widgets.push(Box::new(HRule::new(STYLE.border, 1.0, WIDTH)));
-
         // Stages from bottom to top
-        widgets.push(Box::new(Label::new("STAGES").font(font_small_bold, app)));
+        out.push(Label::new("STAGES").font(font_small_bold, app));
 
-        widgets.push(Box::new(
+        out.push(
             Label::bound(craft_dv_text.clone())
                 .font(font, app)
                 .color(STYLE.text),
-        ));
+        );
 
         for stage in craft.stages_stack.iter() {
             let fuel_pct = stage.fuel_mass / stage.max_fuel_mass;
-            widgets.push(Box::new(
+            out.widgets.push(Box::new(
                 Container::new(vec![
                     Box::new(Label::new(stage.name.clone()).font(font_small_bold, app)),
                     Box::new(
@@ -1626,8 +1584,6 @@ impl Gameplay {
             ));
         }
 
-        out.widgets = widgets;
-
         out.bindings.push(Binding::new({
             let craft_dv_text = craft_dv_text.clone();
             let now = self.current_et.clone();
@@ -1643,6 +1599,79 @@ impl Gameplay {
                 }
             }
         }));
+
+        out
+    }
+
+    fn mission_section(&self, selected: Entity, app: &App) -> Section {
+        let mut out = Section::default();
+
+        const WIDTH: f32 = 280.0;
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+        let font_small_italic = app
+            .renderer
+            .get_font_id_from_name("font-small-italic")
+            .unwrap();
+
+        let craft = self.world.get::<&Craft>(selected).unwrap();
+
+        let is_idle = craft.command.is_none();
+
+        out.push(Label::new("MISSION").font(font_small_bold, app));
+
+        if let Some(command) = &craft.command {
+            let (verb, target) = command.title_parts();
+            let name = self
+                .world
+                .get::<&SceneObject>(target)
+                .ok()
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| "???".into());
+
+            let title = format!("{verb} {name}").to_uppercase();
+
+            let header = if craft.command_scheduled {
+                title
+            } else {
+                format!("{} - QUEUED", title)
+            };
+            out.push(
+                Label::new(header)
+                    .font(font_small_bold, app)
+                    .color(STYLE.accent),
+            );
+
+            for burn in command.burn_schedule() {
+                out.merge(self.burn_card(&burn, app));
+            }
+
+            if !craft.command_scheduled {
+                out.push(
+                    Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Cancel Mission")
+                        .use_style(&STYLE)
+                        .bound_active(self.controls_enabled.clone())
+                        .on_click(CommandMessages::CancelCommand { craft: selected }),
+                );
+            }
+        } else {
+            out.push(
+                Label::new("NO MISSION ASSIGNED")
+                    .font(font_small_italic, app)
+                    .color(STYLE.text_disabled),
+            );
+        }
+
+        if is_idle {
+            out.push(
+                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Plan Mission...")
+                    .use_style_accented(&STYLE)
+                    .on_click(CommandMessages::OpenManeuver),
+            )
+        };
+        out.push(HRule::new(STYLE.border, 1.0, WIDTH));
 
         out
     }
@@ -2057,12 +2086,19 @@ impl Gameplay {
 
     fn ancestor_chain(&self, mut selected: Entity) -> Vec<Entity> {
         let mut ancestors = vec![];
+
         // Who is that man in my family who said I'll fail?
+        while let Ok(docking) = self.world.get::<&Docking>(selected) {
+            ancestors.push(docking.host);
+            selected = docking.host;
+        }
+
+        // finish eating, and come back again!
         while let Ok(parent) = self.world.get::<&Parent>(selected) {
-            // finish eating, and come back again!
             ancestors.push(parent.id);
             selected = parent.id;
         }
+
         // maybe your food is talking to you!
         ancestors
     }
@@ -2541,6 +2577,60 @@ impl Gameplay {
 
             // update for module ui
             self.world.get::<&mut PortHost>(station).unwrap().dock_gen += 1;
+        }
+    }
+
+    fn undock(&mut self, craft: Entity, app: &App) {
+        const SEPARATION_DV: f64 = 0.1 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
+
+        let now = self.current_et.get();
+
+        let Ok(host) = self.world.get::<&Docking>(craft).map(|d| d.host) else {
+            return; // not docked?!
+        };
+        let parent = self.world.get::<&Parent>(craft).unwrap().id;
+        let parent_mu = self.world.get::<&Body>(parent).unwrap().mu;
+        let parent_world_pos = self.world.get::<&WorldPosition>(parent).unwrap().pos;
+
+        // Set the new state of the craft to be the host state + a little radial boost
+        let Ok(host_state) = self.world.get::<&State>(host).map(|s| *s) else {
+            return; // host wasn't orbiting
+        };
+        let Ok(mut new_state) = host_state.propagate(now, parent_mu) else {
+            return;
+        };
+        new_state.v += new_state.r.normalize() * SEPARATION_DV;
+
+        // Commit resource flows now
+        commit_station(&self.world, host, now);
+        commit_station(&self.world, craft, now);
+
+        replace_line_path(
+            &mut self.world,
+            &app.renderer,
+            craft,
+            Some((
+                WorldPosition {
+                    pos: parent_world_pos,
+                },
+                Parent { id: parent },
+                LinePathComponent::new(
+                    new_state
+                        .generate_orbit_vertices(8192, parent_mu, None)
+                        .unwrap(),
+                ),
+                AssociatedEntity { associate: craft },
+            )),
+        );
+
+        self.world.remove_one::<Docking>(craft).ok();
+        self.world.insert_one(craft, new_state).unwrap();
+
+        if let Ok(mut ph) = self.world.get::<&mut PortHost>(craft) {
+            ph.dock_gen += 1;
+        }
+        if let Ok(mut ph) = self.world.get::<&mut PortHost>(host) {
+            ph.dock_gen += 1;
         }
     }
 
