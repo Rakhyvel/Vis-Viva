@@ -155,6 +155,8 @@ impl PartRegistry {
                 raw.energy_kwh
             );
 
+            assert!(raw.modules.len() <= raw.ports as usize);
+
             let def = PartDef {
                 dry_mass_kg: raw.dry_mass_kg,
                 cost: PartCost {

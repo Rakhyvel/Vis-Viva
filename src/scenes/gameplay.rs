@@ -39,10 +39,10 @@ use crate::{
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
-            add_resource, commit_station, next_reservoir_limits, resource_store_amount,
-            station_r_au, station_resource_amount_flow, station_resource_totals, stored_mass_kg,
-            take_resource, Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel,
-            Station, StationModule,
+            add_resource, allocate_ports, commit_station, next_reservoir_limits,
+            resource_store_amount, station_r_au, station_resource_amount_flow,
+            station_resource_totals, stored_mass_kg, take_resource, Docking, Electrolyzer, Miner,
+            PortHost, Resource, ResourceStore, SolarPanel, Station,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },
@@ -77,7 +77,7 @@ use crate::{
 use crate::{
     components::{
         body::{spawn_body, Body, Category, Parent, SceneObject},
-        craft::{spawn_landed_craft, Craft, Docked, Landed},
+        craft::{spawn_landed_craft, Craft, Landed},
         icosphere,
     },
     generation::solar_system_gen::{self},
@@ -581,6 +581,7 @@ impl Scene for Gameplay {
             .set(if self.paused { Icon::Play } else { Icon::Pause });
 
         self.orbit_system();
+        self.docked_position_system();
         self.landed_system();
         self.select_system();
         self.camera_update(app);
@@ -1040,7 +1041,11 @@ impl Gameplay {
             )
             .unwrap();
         world.spawn((
-            StationModule { slot: 0 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 0,
+            },
             ResourceStore {
                 resource: Resource::Energy,
                 amount: 4.32e8,
@@ -1050,12 +1055,20 @@ impl Gameplay {
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 1 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 1,
+            },
             SolarPanel { rated_w: 100_000.0 },
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 2 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 2,
+            },
             ResourceStore {
                 resource: Resource::Water,
                 amount: 3800.0,
@@ -1065,7 +1078,11 @@ impl Gameplay {
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 3 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 3,
+            },
             ResourceStore {
                 resource: Resource::Oxygen,
                 amount: 600.0,
@@ -1075,7 +1092,11 @@ impl Gameplay {
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 4 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 4,
+            },
             ResourceStore {
                 resource: Resource::Hydrogen,
                 amount: 100.0,
@@ -1085,7 +1106,11 @@ impl Gameplay {
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 5 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 5,
+            },
             Factory {
                 current_job: None,
                 pending_job: None,
@@ -1095,7 +1120,11 @@ impl Gameplay {
             Parent { id: station },
         ));
         world.spawn((
-            StationModule { slot: 6 },
+            Docking {
+                host: station,
+                own_port: 0,
+                host_port: 6,
+            },
             Electrolyzer {
                 enabled: false,
                 power_watts: 5_000.0,
@@ -2041,10 +2070,10 @@ impl Gameplay {
     fn module_list(&self, station: Entity, app: &App) -> Section {
         let mut modules: Vec<(u32, Entity)> = self
             .world
-            .query::<(&StationModule, &Parent)>()
+            .query::<&Docking>()
             .iter()
-            .filter(|(_, (_, p))| p.id == station)
-            .map(|(e, (m, _))| (m.slot, e))
+            .filter(|(_, docking)| docking.host == station)
+            .map(|(e, m)| (m.host_port, e))
             .collect();
 
         let mut out = Section::default();
@@ -2876,18 +2905,26 @@ impl Gameplay {
                 self.world.insert_one(craft, Landed { offset }).unwrap();
             }
             Event::Dock { craft, with } => {
-                self.selection.set_selected(craft, app.seconds as f64);
+                let Some((own_port, host_port)) = allocate_ports(&self.world, craft, with) else {
+                    // port got taken while we were in transit. Just stay in orbit.
+                    return;
+                };
 
-                // re-parent to the station
-                {
-                    let mut parent = self.world.get::<&mut Parent>(craft).unwrap();
-                    parent.id = with;
-                }
+                self.selection.set_selected(craft, app.seconds as f64);
 
                 self.world.remove_one::<State>(craft).ok();
                 replace_line_path(&mut self.world, &app.renderer, craft, None);
                 commit_station(&self.world, craft, self.current_et.get());
-                self.world.insert_one(craft, Docked {}).unwrap();
+                self.world
+                    .insert_one(
+                        craft,
+                        Docking {
+                            host: with,
+                            host_port,
+                            own_port,
+                        },
+                    )
+                    .unwrap();
             }
             Event::CompleteCommand { craft } => {
                 let mut craft = self.world.get::<&mut Craft>(craft).unwrap();
@@ -3007,8 +3044,12 @@ impl Gameplay {
             )
             .unwrap();
 
-        for (slot, spec) in def.modules.iter().enumerate() {
-            let slot = StationModule { slot: slot as u32 };
+        for (port, spec) in def.modules.iter().enumerate() {
+            let docking = Docking {
+                host: craft,
+                host_port: port as u32,
+                own_port: 0 as u32, // TODO: This will work for modules now, but maybe break if modules get multiple docking ports
+            };
             let parent = Parent { id: craft };
             match *spec {
                 ModuleSpec::Store {
@@ -3016,7 +3057,7 @@ impl Gameplay {
                     amount,
                     capacity,
                 } => self.world.spawn((
-                    slot,
+                    docking,
                     ResourceStore {
                         resource,
                         amount,
@@ -3029,7 +3070,7 @@ impl Gameplay {
                     power_watts,
                     kg_per_s,
                 } => self.world.spawn((
-                    slot,
+                    docking,
                     Miner {
                         enabled: false,
                         kg_per_s,
@@ -3127,7 +3168,7 @@ impl Gameplay {
         }
     }
 
-    // Updates craft to be on the surface of their planet
+    /// Updates craft to be on the surface of their planet
     fn landed_system(&mut self) {
         let mut pos_map = HashMap::new();
         for (entity, (world_pos, _body)) in self.world.query::<(&WorldPosition, &Body)>().iter() {
@@ -3140,6 +3181,20 @@ impl Gameplay {
         {
             let parent_pos = pos_map.get(&parent.id).unwrap();
             world_pos.pos = parent_pos + landed.offset;
+        }
+    }
+
+    /// Updates craft to be right on their station's position
+    fn docked_position_system(&mut self) {
+        let mut pos_map = HashMap::new();
+        for (entity, world_pos) in self.world.query::<&WorldPosition>().iter() {
+            pos_map.insert(entity, world_pos.pos);
+        }
+
+        for (_, (world_pos, docking)) in self.world.query_mut::<(&mut WorldPosition, &Docking)>() {
+            if let Some(host_pos) = pos_map.get(&docking.host) {
+                world_pos.pos = *host_pos;
+            }
         }
     }
 
@@ -3179,11 +3234,7 @@ impl Gameplay {
             .collect();
 
         // Add pending projected factory completion events
-        for (fab, (_, _, f)) in self
-            .world
-            .query::<(&StationModule, &Parent, &Factory)>()
-            .iter()
-        {
+        for (fab, (_, f)) in self.world.query::<(&Docking, &Factory)>().iter() {
             let (t, part_id) = if let Some(part_id) = f.pending_job {
                 (
                     projected_completion(&self.world, fab, &self.parts, self.current_et.get())

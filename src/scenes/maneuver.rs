@@ -23,7 +23,7 @@ use crate::{
     components::{
         body::{Body, Parent, SceneObject},
         craft::{Command, Craft, Landed},
-        station::stored_mass_kg,
+        station::{allocate_ports, stored_mass_kg},
     },
     ui::{
         container::Container,
@@ -829,7 +829,9 @@ impl ManeuverModal {
                 let other = other_state.propagate(current_et, mu).ok()?;
                 let dr = (other.r - this.r).magnitude();
                 let dv = (other.v - this.v).magnitude();
-                (dr < DOCKING_RANGE && dv < DOCKING_SPEED).then(|| (entity, scene_obj.name.clone()))
+                let free_ports = allocate_ports(world, craft, entity).is_some();
+                (dr < DOCKING_RANGE && dv < DOCKING_SPEED && free_ports)
+                    .then(|| (entity, scene_obj.name.clone()))
             })
             .collect()
     }

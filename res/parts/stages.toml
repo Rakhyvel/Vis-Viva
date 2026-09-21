@@ -20,7 +20,7 @@ desc = 'Can land on bodies, mine resources like water ice and Ilmenite, and brin
 dry_mass_kg = 500.0
 energy_kwh = 7#200.0
 #inputs = {metal = 4}
-ports = 1
+ports = 4
 
 [parts.fuel]
 max_fuel_mass_kg = 875.0

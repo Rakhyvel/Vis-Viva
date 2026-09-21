@@ -235,8 +235,6 @@ pub struct Landed {
     pub offset: DVec3,
 }
 
-pub struct Docked {}
-
 pub fn spawn_landed_craft(
     payload: Payload,
     stages_stack: Vec<Stage>,

@@ -80,13 +80,13 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] changes the craft's weight!
   - [ ] docking
     - [x] can dock if close enough
-    - [ ] docking ports
+    - [x] docking ports
       - [x] ports: u32 on PartDef
-      - [ ] docked craft take up a port
-      - [ ] a dock is refused if the host or target has no free port
-    - [ ] list of ports, and what's docked to what or not
-      - [ ] make this a tab, if things get too hard to see
-    - [ ] can undock
+      - [x] docked craft take up a port
+      - [x] a dock is refused if the host or target has no free port
+    - [ ] breadcrumbs list stations for docked craft
+    - [ ] disable maneuvers for docked craft (maybe replace with extra "undock" button)
+    - [ ] docked craft card, with link to select craft, undock button
     - [ ] docked craft contribute mass to the host's burns
     - [ ] fabricating a craft takes up a docking spot, open the station's docking tab on completion
       - [ ] If we make this the same requirement for modules, modules could just take up slots, the same as craft

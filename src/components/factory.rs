@@ -15,7 +15,7 @@ use crate::{
         craft::Landed,
         inventory::PartInventory,
         parts::{PartCost, PartRegistry},
-        station::{station_resource_totals, Resource, StationModule},
+        station::{station_resource_totals, Docking, Resource},
         tile::{SurfaceTile, TileMap},
     },
 };
@@ -198,8 +198,8 @@ pub fn station_reserved(
 ) -> (HashMap<u64, u32>, HashMap<Resource, f32>) {
     let mut parts = HashMap::new();
     let mut resources = HashMap::new();
-    for (_, (_, parent, fab)) in world.query::<(&StationModule, &Parent, &Factory)>().iter() {
-        if parent.id != station {
+    for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
+        if docking.host != station {
             continue;
         }
         let Some(id) = fab.pending_job else {

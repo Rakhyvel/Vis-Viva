@@ -6,12 +6,7 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{
-        body::{Body, Parent},
-        craft::Landed,
-        factory::Factory,
-        parts::PartRegistry,
-    },
+    components::{body::Body, craft::Landed, factory::Factory, parts::PartRegistry},
 };
 
 pub struct Station {
@@ -36,11 +31,8 @@ pub fn station_r_au(world: &World, station: Entity) -> f64 {
 fn committed_totals(world: &World, station: Entity, r: Resource) -> (f32, f32) {
     let mut amount = 0.0;
     let mut capacity = 0.0;
-    for (_, (_, p, s)) in world
-        .query::<(&StationModule, &Parent, &ResourceStore)>()
-        .iter()
-    {
-        if p.id == station && s.resource == r {
+    for (_, (d, s)) in world.query::<(&Docking, &ResourceStore)>().iter() {
+        if d.host == station && s.resource == r {
             amount += s.amount;
             capacity += s.capacity
         }
@@ -73,10 +65,11 @@ pub fn station_resource_amount_flow(
         Resource::Energy => {
             let mut watts = station_net_watts(world, host);
             if projected {
-                for (_, (_, parent, fab)) in
-                    world.query::<(&StationModule, &Parent, &Factory)>().iter()
-                {
-                    if parent.id == host && fab.current_job.is_none() && fab.pending_job.is_some() {
+                for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
+                    if docking.host == host
+                        && fab.current_job.is_none()
+                        && fab.pending_job.is_some()
+                    {
                         watts -= fab.power_watts;
                     }
                 }
@@ -95,33 +88,27 @@ pub fn station_net_watts(world: &World, station: Entity) -> f32 {
     let mut w = 0.0;
 
     // Sum up all the generators
-    for (_, (_, parent, panel)) in world
-        .query::<(&StationModule, &Parent, &SolarPanel)>()
-        .iter()
-    {
-        if parent.id == station {
+    for (_, (docking, panel)) in world.query::<(&Docking, &SolarPanel)>().iter() {
+        if docking.host == station {
             w += panel.output_w(r_au);
         }
     }
 
     // Subtract consumers
-    for (_, (_, parent, fab)) in world.query::<(&StationModule, &Parent, &Factory)>().iter() {
-        if parent.id == station && fab.current_job.is_some() && fab.enabled {
+    for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
+        if docking.host == station && fab.current_job.is_some() && fab.enabled {
             w -= fab.power_watts;
         }
     }
-    for (_, (_, parent, el)) in world
-        .query::<(&StationModule, &Parent, &Electrolyzer)>()
-        .iter()
-    {
-        let running = el.is_running(world, parent.id);
-        if parent.id == station && el.enabled && running {
+    for (_, (docking, el)) in world.query::<(&Docking, &Electrolyzer)>().iter() {
+        let running = el.is_running(world, docking.host);
+        if docking.host == station && el.enabled && running {
             w -= el.power_watts;
         }
     }
-    for (_, (_, parent, miner)) in world.query::<(&StationModule, &Parent, &Miner)>().iter() {
-        let running = miner.is_running(world, parent.id);
-        if parent.id == station && running {
+    for (_, (docking, miner)) in world.query::<(&Docking, &Miner)>().iter() {
+        let running = miner.is_running(world, docking.host);
+        if docking.host == station && running {
             w -= miner.power_watts;
         }
     }
@@ -133,11 +120,8 @@ pub fn electrolyzer_kg_per_s(world: &World, station: Entity) -> f32 {
     let (water, _) = committed_totals(world, station, Resource::Water);
 
     let mut kg_s = 0.0;
-    for (_, (_, p, el)) in world
-        .query::<(&StationModule, &Parent, &Electrolyzer)>()
-        .iter()
-    {
-        if p.id == station && el.enabled && water > 0.0 {
+    for (_, (docking, el)) in world.query::<(&Docking, &Electrolyzer)>().iter() {
+        if docking.host == station && el.enabled && water > 0.0 {
             kg_s += el.power_watts / el.joules_per_kg_water
         }
     }
@@ -147,7 +131,7 @@ pub fn electrolyzer_kg_per_s(world: &World, station: Entity) -> f32 {
 
 /// Interpolates the amount for a specific resource store
 pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) -> f32 {
-    let station = world.get::<&Parent>(module).unwrap().id;
+    let station = world.get::<&Docking>(module).unwrap().host;
     let Ok(store) = world.get::<&ResourceStore>(module) else {
         return 0.0;
     };
@@ -155,9 +139,9 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
     let flow = station_resource_amount_flow(world, station, store.resource, false);
 
     let mut capacity = 0.0;
-    let mut q = world.query::<(&StationModule, &Parent, &ResourceStore)>();
-    for (_, (_, parent, other_store)) in q.iter() {
-        if parent.id == station && other_store.resource == store.resource {
+    let mut q = world.query::<(&Docking, &ResourceStore)>();
+    for (_, (docking, other_store)) in q.iter() {
+        if docking.host == station && other_store.resource == store.resource {
             capacity += other_store.capacity;
         }
     }
@@ -178,9 +162,9 @@ pub fn station_resource_totals(
 
     let mut capacity = 0.0;
     let mut stores: Vec<&ResourceStore> = Vec::new();
-    let mut q = world.query::<(&StationModule, &Parent, &ResourceStore)>();
-    for (_, (_, parent, store)) in q.iter() {
-        if parent.id == station && store.resource == r {
+    let mut q = world.query::<(&Docking, &ResourceStore)>();
+    for (_, (docking, store)) in q.iter() {
+        if docking.host == station && store.resource == r {
             capacity += store.capacity;
             stores.push(store);
         }
@@ -262,9 +246,9 @@ pub fn commit_resource_stores(world: &World, station: Entity, r: Resource, now: 
 
 fn stores_of(world: &World, station: Entity, r: Resource) -> Vec<Entity> {
     world
-        .query::<(&StationModule, &Parent, &ResourceStore)>()
+        .query::<(&Docking, &ResourceStore)>()
         .iter()
-        .filter(|(_, (_, p, store))| p.id == station && store.resource == r)
+        .filter(|(_, (docking, store))| docking.host == station && store.resource == r)
         .map(|(e, _)| e)
         .collect()
 }
@@ -317,11 +301,8 @@ pub fn next_reservoir_limits(
 /// Mass of all stored resources.
 pub fn stored_mass_kg(world: &World, host: Entity, t: EphemerisTime) -> f64 {
     let mut kg = 0.0;
-    for (module, (_, p, store)) in world
-        .query::<(&StationModule, &Parent, &ResourceStore)>()
-        .iter()
-    {
-        if p.id == host && store.resource != Resource::Energy {
+    for (module, (docking, store)) in world.query::<(&Docking, &ResourceStore)>().iter() {
+        if docking.host == host && store.resource != Resource::Energy {
             kg += resource_store_amount(world, module, t) as f64
         }
     }
@@ -330,8 +311,8 @@ pub fn stored_mass_kg(world: &World, host: Entity, t: EphemerisTime) -> f64 {
 
 fn pending_deduction(world: &World, station: Entity, registry: &PartRegistry, r: Resource) -> f32 {
     let mut sum = 0.0;
-    for (_, (_, p, f)) in world.query::<(&StationModule, &Parent, &Factory)>().iter() {
-        if p.id != station {
+    for (_, (docking, f)) in world.query::<(&Docking, &Factory)>().iter() {
+        if docking.host != station {
             continue;
         }
         let Some(id) = f.pending_job else { continue };
@@ -347,9 +328,61 @@ fn pending_deduction(world: &World, station: Entity, registry: &PartRegistry, r:
     sum
 }
 
-/// Joins a module to a station
-pub struct StationModule {
-    pub slot: u32,
+/// This entity is attached to some port on `host` via one of our own ports
+pub struct Docking {
+    /// Who we're docked to
+    pub host: Entity,
+    /// The port on the host that this docking occupies
+    pub host_port: u32,
+    /// Our own port that we're using to dock to `host`
+    pub own_port: u32,
+}
+
+pub fn allocate_ports(world: &World, craft: Entity, station: Entity) -> Option<(u32, u32)> {
+    next_free_port(world, craft).and_then(|craft_port| {
+        next_free_port(world, station).map(|station_port| (craft_port, station_port))
+    })
+}
+
+fn next_free_port(world: &World, host: Entity) -> Option<u32> {
+    let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
+
+    let docked_to_host: Vec<u32> = world
+        .query::<&Docking>()
+        .iter()
+        .filter_map(|(_, docking)| {
+            if docking.host == host {
+                Some(docking.host_port)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for i in 0..total {
+        if docked_to_host.iter().any(|j| *j == i) {
+            continue;
+        }
+
+        return Some(i);
+    }
+
+    None
+}
+
+pub fn free_ports(world: &World, host: Entity) -> u32 {
+    let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
+
+    let docked = world
+        .query::<&Docking>()
+        .iter()
+        .filter(|(_, docking)| docking.host == host)
+        .count() as u32;
+
+    // Host spends 1 port if it's docked somewhere else
+    let own = world.get::<&Docking>(host).is_ok() as u32;
+
+    total.saturating_sub(docked + own)
 }
 
 pub struct SolarPanel {
@@ -401,16 +434,16 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
         return 0.0;
     }
 
-    let Ok(parent) = world.get::<&Parent>(host) else {
+    let Ok(docking) = world.get::<&Docking>(host) else {
         return 0.0;
     };
-    let Ok(body) = world.get::<&Body>(parent.id) else {
+    let Ok(body) = world.get::<&Body>(docking.host) else {
         return 0.0;
     };
 
     let mut kg_s = 0.0;
-    for (_, (_, p, m)) in world.query::<(&StationModule, &Parent, &Miner)>().iter() {
-        if p.id == host && m.enabled {
+    for (_, (docking, m)) in world.query::<(&Docking, &Miner)>().iter() {
+        if docking.host == host && m.enabled {
             kg_s += m.kg_per_s * 0.4; // TODO: Take from body ice fraction
         }
     }
