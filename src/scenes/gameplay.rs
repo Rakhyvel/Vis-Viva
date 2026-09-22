@@ -36,7 +36,7 @@ use crate::{
     components::{
         craft::{
             replace_line_path, spawn_docked_craft, spawn_orbiting_craft, AssociatedEntity, Command,
-            Payload, ScheduledBurn, Stage,
+            Payload, ScheduledBurn,
         },
         factory::{projected_completion, Factory},
         inventory::PartInventory,
@@ -58,7 +58,6 @@ use crate::{
         maneuver::ManeuverModal,
         sim_speed::SimSpeed,
         starbox::Starbox,
-        vab::VabUi,
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
@@ -80,7 +79,7 @@ use crate::{
 use crate::{
     components::{
         body::{spawn_body, Body, Category, Parent, SceneObject},
-        craft::{spawn_landed_craft, Craft, Landed},
+        craft::{Craft, Landed},
         icosphere,
     },
     generation::solar_system_gen::{self},
@@ -132,13 +131,11 @@ pub struct Gameplay {
     gui_built_for: Option<(Entity, u32, u64, u64)>,
     gui_bindings: Vec<Binding>,
     fabricator_ui: FabricatorUi,
-    vab_ui: VabUi,
     maneuver_ui: ManeuverModal,
     game_over_ui: GameOverUi,
 
     // RCs for GUI
     controls_enabled: Rc<Cell<bool>>,
-    turn_progress: Rc<Cell<f32>>,
     calendar_string: Rc<RefCell<String>>,
     marks: Rc<RefCell<Vec<TimelineMark>>>,
     marks_version: u64,
@@ -166,41 +163,15 @@ enum TurnMessages {
 
 #[derive(Clone)]
 pub enum CommandMessages {
-    OpenFabricator {
-        fabricator_entity: Entity,
-    },
-    CancelQueuedFabricator {
-        fabricator_entity: Entity,
-    },
-    CancelActiveFabricator {
-        fabricator_entity: Entity,
-    },
-    ToggleFabricator {
-        fabricator_entity: Entity,
-    },
-    ToggleElectrolyzer {
-        electrolyzer_entity: Entity,
-    },
-    ToggleMiner {
-        miner_entity: Entity,
-    },
-    CancelCommand {
-        craft: Entity,
-    },
-    Undock {
-        entity: Entity,
-    },
-    SelectEntity {
-        entity: Entity,
-    },
-    #[allow(unused)]
-    FactoryCommand {
-        part_id: u64,
-        factory_entity: Entity,
-    },
-    #[allow(unused)]
-    OpenVab,
-    #[allow(unused)]
+    OpenFabricator { fabricator_entity: Entity },
+    CancelQueuedFabricator { fabricator_entity: Entity },
+    CancelActiveFabricator { fabricator_entity: Entity },
+    ToggleFabricator { fabricator_entity: Entity },
+    ToggleElectrolyzer { electrolyzer_entity: Entity },
+    ToggleMiner { miner_entity: Entity },
+    CancelCommand { craft: Entity },
+    Undock { entity: Entity },
+    SelectEntity { entity: Entity },
     OpenManeuver,
 }
 
@@ -358,7 +329,6 @@ impl Scene for Gameplay {
     /// Update the scene every tick
     fn update(&mut self, app: &App) {
         let modal_open = self.fabricator_ui.is_shown()
-            || self.vab_ui.is_shown()
             || self.maneuver_ui.is_shown()
             || self.game_over_ui.is_shown();
 
@@ -383,48 +353,6 @@ impl Scene for Gameplay {
             let mut factory = self.world.get::<&mut Factory>(fabricator).unwrap();
             factory.pending_job = Some(part_id);
             factory.reserved_port = reserved_port;
-        }
-
-        if self.vab_ui.update(app) {
-            if let Some(selected) = self.selection.selected_entity() {
-                let parent = self.world.get::<&Parent>(selected).unwrap().id;
-
-                let payload = self
-                    .vab_ui
-                    .payload()
-                    .expect("the VAB shouldn't allow invalid payloads");
-
-                let stages = self
-                    .vab_ui
-                    .stages()
-                    .into_iter()
-                    .collect::<Option<Vec<Stage>>>()
-                    .expect("the VAB shouldn't allow invalid stages");
-
-                {
-                    let mut inventory = self.world.get::<&mut PartInventory>(parent).unwrap();
-                    inventory
-                        .take(self.vab_ui.payload.as_ref().unwrap().id_hash())
-                        .unwrap();
-                    for stage in &self.vab_ui.stages {
-                        inventory.take(stage.id_hash()).unwrap()
-                    }
-                }
-
-                let landed_craft_entity = spawn_landed_craft(
-                    payload,
-                    stages,
-                    SceneObject {
-                        bvh_node_id: None,
-                        name: String::from("landed craft"),
-                    },
-                    Parent { id: parent },
-                    &mut self.world,
-                    &app.renderer,
-                    &mut self.bvh,
-                );
-                self.selection.crafts.push(landed_craft_entity);
-            }
         }
 
         if let Some(result) = self
@@ -504,23 +432,6 @@ impl Scene for Gameplay {
                     }
                     CommandMessages::SelectEntity { entity } => {
                         self.selection.set_selected(entity, app.seconds as f64);
-                    }
-                    CommandMessages::FactoryCommand {
-                        part_id,
-                        factory_entity,
-                    } => {
-                        self.world
-                            .get::<&mut Factory>(factory_entity)
-                            .unwrap()
-                            .start_job(part_id, self.current_et.get(), 1.0)
-                            .expect("you wouldnt give a fake part would you");
-                    }
-                    CommandMessages::OpenVab => {
-                        if let Some(selected) = self.selection.selected_entity() {
-                            let parent = self.world.get::<&Parent>(selected).unwrap().id;
-                            let inventory = self.world.get::<&PartInventory>(parent).unwrap();
-                            self.vab_ui.show(&inventory, &self.parts, app);
-                        }
                     }
                     CommandMessages::OpenManeuver => {
                         if let Some(selected) = self.selection.selected_entity() {
@@ -763,7 +674,6 @@ impl Scene for Gameplay {
         self.gui.render(app);
         self.turn_gui.render(app);
         self.fabricator_ui.render(app);
-        self.vab_ui.render(app);
         self.maneuver_ui.render(app);
         self.game_over_ui.render(app);
     }
@@ -1226,12 +1136,10 @@ impl Gameplay {
             gui_bindings: vec![],
             turn_gui: Anchor::new(Box::new(container![]), AnchorPoint::BottomLeft),
             fabricator_ui: FabricatorUi::new(),
-            vab_ui: VabUi::new(),
             maneuver_ui: ManeuverModal::new(app),
             game_over_ui: GameOverUi::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
-            turn_progress: Rc::new(Cell::new(0.0)),
             calendar_string: Rc::new(RefCell::new(String::new())),
             marks: Rc::new(RefCell::new(vec![])),
             marks_version: 0,
@@ -1895,194 +1803,6 @@ impl Gameplay {
         }
 
         out
-    }
-
-    #[allow(unused)]
-    fn build_factory_info(
-        &self,
-        selected: Entity,
-        app: &App,
-    ) -> Vec<Box<dyn Widget<CommandMessages>>> {
-        const WIDTH: f32 = 280.0;
-
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font_big = app.renderer.get_font_id_from_name("font-big").unwrap();
-        let factory = self.world.get::<&Factory>(selected).unwrap();
-
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![
-            Box::new(Label::new("FACTORY").font(font_big, app)),
-            Box::new(HRule::new(STYLE.border, 1.0, WIDTH)),
-        ];
-
-        if let Some(job) = &factory.current_job {
-            let part = self.parts.get(job.part_id).expect("should be a valid part");
-
-            widgets.extend(vec![
-                Box::new(Label::new("STATUS").font(font_small_bold, app)),
-                Box::new(Label::new(format!("Building: {}", part.name)).font(font, app))
-                    as Box<dyn Widget<CommandMessages>>,
-                Box::new(
-                    ProgressBar::new(vec2(WIDTH, 12.0))
-                        .use_style(&STYLE)
-                        .bind(self.turn_progress.clone()),
-                ) as Box<dyn Widget<CommandMessages>>,
-                Box::new(
-                    Label::new(format!(
-                        "Completion: {}",
-                        job.completion_et(&factory, self.current_et.get())
-                            .map_or(String::from("None"), |et| et.as_calendar())
-                    ))
-                    .font(font, app),
-                ) as Box<dyn Widget<CommandMessages>>,
-            ])
-        } else {
-            widgets.extend(vec![
-                Box::new(Label::new("STATUS").font(font_small_bold, app)),
-                Box::new(Label::new("No orders").font(font, app))
-                    as Box<dyn Widget<CommandMessages>>,
-                Box::new(HRule::new(STYLE.border, 1.0, WIDTH)) as Box<dyn Widget<CommandMessages>>,
-                Box::new(Label::new("BUILD").font(font_small_bold, app))
-                    as Box<dyn Widget<CommandMessages>>,
-            ]);
-            let build_orders: Vec<Box<dyn Widget<CommandMessages>>> = self
-                .parts
-                .all()
-                // TODO: Filter against what this factory can build, SWAPC wise
-                .map(|part| {
-                    let can_afford = true; // TODO: Check against inventory's parts
-                    Box::new(
-                        Container::new(vec![
-                            Box::new(
-                                Container::new(vec![Box::new(
-                                    Label::new(part.name.clone())
-                                        .font(font_small_bold, app)
-                                        .color(if can_afford {
-                                            STYLE.text
-                                        } else {
-                                            STYLE.text_disabled
-                                        }),
-                                )])
-                                .flow(Flow::Vertical)
-                                .padding(vec2(0.0, 4.0))
-                                .fixed_width(vec2(WIDTH * 0.8 - 24.0, 10.0)),
-                            ),
-                            Box::new(
-                                Container::new(vec![Box::new(
-                                    Button::<CommandMessages>::text(vec2(45.0, 25.0), "BUILD")
-                                        .use_style(&STYLE)
-                                        .on_click(CommandMessages::FactoryCommand {
-                                            part_id: part.id_hash(),
-                                            factory_entity: self
-                                                .selection
-                                                .selected_entity()
-                                                .unwrap(),
-                                        })
-                                        .bound_active(self.controls_enabled.clone())
-                                        .active(can_afford),
-                                )])
-                                .padding(vec2(0.0, 0.0))
-                                .fixed_width(vec2(WIDTH * 0.2, 10.0))
-                                .cross_align(Align::End)
-                                .flow(Flow::Vertical),
-                            ),
-                        ])
-                        .border(STYLE.border, 1.0)
-                        .cross_align(Align::Center)
-                        .flow(Flow::Horizontal),
-                    ) as Box<dyn Widget<CommandMessages>>
-                })
-                .collect();
-            widgets.push(Box::new(
-                Container::new(build_orders).padding(vec2(0.0, 0.0)),
-            ));
-        }
-
-        widgets
-    }
-
-    #[allow(unused)]
-    fn build_vab_info(&self, selected: Entity, app: &App) -> Vec<Box<dyn Widget<CommandMessages>>> {
-        const WIDTH: f32 = 280.0;
-
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font_big = app.renderer.get_font_id_from_name("font-big").unwrap();
-
-        let parent = self.world.get::<&Parent>(selected).unwrap().id;
-        let inventory = self.world.get::<&PartInventory>(parent).unwrap();
-
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![
-            Box::new(Label::new("VAB").font(font_big, app)),
-            Box::new(HRule::new(STYLE.border, 1.0, WIDTH)),
-            Box::new(Label::new("INVENTORY").font(font_small_bold, app)),
-        ];
-
-        // Show available parts
-        let inventory_rows: Vec<Box<dyn Widget<CommandMessages>>> = self
-            .parts
-            .all()
-            .filter_map(|part| {
-                let count = inventory.parts.get(&part.id_hash()).copied().unwrap_or(0);
-                if count == 0 {
-                    return None;
-                }
-                Some(Box::new(
-                    Container::new(vec![
-                        Box::new(
-                            Container::new(vec![Box::new(
-                                Label::new(part.name.clone()).font(font_small_bold, app),
-                            )])
-                            .flow(Flow::Vertical)
-                            .padding(vec2(0.0, 0.0))
-                            .fixed_width(vec2(WIDTH * 0.8 - 24.0, 10.0)),
-                        ),
-                        Box::new(
-                            Container::new(vec![Box::new(
-                                Label::new(format!("x{count}")).font(font, app),
-                            )])
-                            .padding(vec2(0.0, 0.0))
-                            .fixed_width(vec2(WIDTH * 0.2, 10.0))
-                            .cross_align(Align::End)
-                            .flow(Flow::Vertical),
-                        ),
-                    ])
-                    .border(STYLE.border, 1.0)
-                    .cross_align(Align::Center)
-                    .flow(Flow::Horizontal),
-                ) as Box<dyn Widget<CommandMessages>>)
-            })
-            .collect();
-
-        if inventory_rows.is_empty() {
-            widgets.push(Box::new(
-                Label::new("No parts available")
-                    .font(font, app)
-                    .color(STYLE.text_disabled),
-            ));
-        } else {
-            widgets.push(Box::new(
-                Container::new(inventory_rows).padding(vec2(0.0, 0.0)),
-            ));
-        }
-
-        widgets.push(Box::new(HRule::new(STYLE.border, 1.0, WIDTH)));
-        widgets.push(Box::new(Label::new("ASSEMBLE").font(font_small_bold, app)));
-        widgets.push(Box::new(
-            Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Stack New Vehicle...")
-                .use_style_accented(&STYLE)
-                .bound_active(self.controls_enabled.clone())
-                .on_click(CommandMessages::OpenVab)
-                .active(!inventory.parts.is_empty()),
-        ));
-
-        widgets
     }
 
     fn build_crumbs(&self, selected: Entity, app: &App) -> Vec<Box<dyn Widget<CommandMessages>>> {

@@ -87,7 +87,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] breadcrumbs list stations for docked craft
     - [x] disable maneuvers for docked craft (maybe replace with extra "undock" button)
     - [x] docked craft card, with link to select craft, undock button
-    - [ ] fabricating a craft takes up a docking spot, open the station's docking tab on completion
+    - [x] fabricating a craft takes up a docking spot, open the station's docking tab on completion
     - [ ] get rid of the stage/payload distinction, just have parts and craft and modules
     - [ ] docked craft contribute mass to the host's burns
   - [ ] resource transfer

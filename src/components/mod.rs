@@ -6,4 +6,3 @@ pub(crate) mod inventory;
 pub(crate) mod parts;
 pub(crate) mod station;
 pub(crate) mod tile;
-pub(crate) mod vab;
