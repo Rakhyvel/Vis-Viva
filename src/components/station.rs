@@ -6,7 +6,7 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{body::Body, craft::Landed, factory::Factory, parts::PartRegistry},
+    components::{body::Body, body::Parent, craft::Landed, factory::Factory, parts::PartRegistry},
 };
 
 pub struct Station {
@@ -434,10 +434,10 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
         return 0.0;
     }
 
-    let Ok(docking) = world.get::<&Docking>(host) else {
+    let Ok(parent) = world.get::<&Parent>(host) else {
         return 0.0;
     };
-    let Ok(body) = world.get::<&Body>(docking.host) else {
+    let Ok(body) = world.get::<&Body>(parent.id) else {
         return 0.0;
     };
 

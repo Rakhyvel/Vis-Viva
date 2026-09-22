@@ -42,7 +42,7 @@ use crate::{
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
-            add_resource, allocate_ports, commit_station, next_reservoir_limits,
+            add_resource, allocate_ports, commit_station, free_ports, next_reservoir_limits,
             resource_store_amount, station_r_au, station_resource_amount_flow,
             station_resource_totals, stored_mass_kg, take_resource, Docking, Electrolyzer, Miner,
             PortHost, Resource, ResourceStore, SolarPanel, Station,
@@ -202,6 +202,13 @@ pub enum CommandMessages {
     OpenVab,
     #[allow(unused)]
     OpenManeuver,
+}
+
+enum DockedView {
+    /// Something is docked to one of our ports, view the guest
+    Guest,
+    /// We're docked to one of their ports, view the host
+    Host,
 }
 
 #[derive(Default)]
@@ -2104,55 +2111,70 @@ impl Gameplay {
     }
 
     fn module_list(&self, station: Entity, app: &App) -> Section {
-        let mut modules: Vec<(u32, Entity)> = self
-            .world
-            .query::<&Docking>()
-            .iter()
-            .filter(|(_, docking)| docking.host == station)
-            .map(|(e, m)| (m.host_port, e))
-            .collect();
-
         let mut out = Section::default();
-        if modules.is_empty() {
-            // Don't even THINK about adding the modules title buster
-            return out;
-        }
-
-        modules.sort_by_key(|(slot, _)| *slot);
 
         let font_small_bold = app
             .renderer
             .get_font_id_from_name("font-small-bold")
             .unwrap();
 
-        out.push(Label::new("MODULES").font(font_small_bold, app));
+        let total = self.world.get::<&PortHost>(station).unwrap().ports;
+        let used = total - free_ports(&self.world, station);
 
-        for (_, module) in modules {
-            out.merge(self.module_section(module, app).into_card());
+        out.push(Label::new(format!("PORTS ({used}/{total})")).font(font_small_bold, app));
+
+        for i in 0..total {
+            out.merge(self.module_section(station, i, app).into_card());
         }
+
         out
     }
 
-    fn module_section(&self, module: Entity, app: &App) -> Section {
+    fn module_section(&self, host: Entity, i: u32, app: &App) -> Section {
         let font_small_bold = app
             .renderer
             .get_font_id_from_name("font-small-bold")
             .unwrap();
-
-        if self.world.get::<&SolarPanel>(module).is_ok() {
-            return self.solar_panel_section(module, app);
-        } else if self.world.get::<&ResourceStore>(module).is_ok() {
-            return self.resource_store_section(module, app);
-        } else if self.world.get::<&Factory>(module).is_ok() {
-            return self.fabricator_section(module, app);
-        } else if self.world.get::<&Electrolyzer>(module).is_ok() {
-            return self.electrolyzer_section(module, app);
-        } else if self.world.get::<&Miner>(module).is_ok() {
-            return self.miner_section(module, app);
-        }
+        let font_small_italic = app
+            .renderer
+            .get_font_id_from_name("font-small-italic")
+            .unwrap();
 
         let mut out = Section::default();
-        out.push(Label::new("Unknown module!!!").font(font_small_bold, app));
+
+        if let Some(module) = self
+            .world
+            .query::<&Docking>()
+            .iter()
+            .find(|(_, docking)| docking.host == host && docking.host_port == i)
+            .map(|(e, _)| e)
+        {
+            if self.world.get::<&SolarPanel>(module).is_ok() {
+                out.merge(self.solar_panel_section(module, app));
+            } else if self.world.get::<&ResourceStore>(module).is_ok() {
+                out.merge(self.resource_store_section(module, app));
+            } else if self.world.get::<&Factory>(module).is_ok() {
+                out.merge(self.fabricator_section(module, app));
+            } else if self.world.get::<&Electrolyzer>(module).is_ok() {
+                out.merge(self.electrolyzer_section(module, app));
+            } else if self.world.get::<&Miner>(module).is_ok() {
+                out.merge(self.miner_section(module, app));
+            } else if self.world.get::<&Craft>(module).is_ok() {
+                out.merge(self.docked_craft_section(host, module, DockedView::Guest, app));
+            } else {
+                out.push(Label::new("Unknown module!!!").font(font_small_bold, app));
+            }
+        } else if let Some(docking) = self
+            .world
+            .get::<&Docking>(host)
+            .ok()
+            .filter(|docking| docking.own_port == i)
+        {
+            out.merge(self.docked_craft_section(docking.host, host, DockedView::Host, app));
+        } else {
+            out.push(Label::new("Available").font(font_small_italic, app));
+        }
+
         out
     }
 
@@ -2497,6 +2519,45 @@ impl Gameplay {
                 }
             }
         }));
+
+        out
+    }
+
+    fn docked_craft_section(
+        &self,
+        host: Entity,
+        guest: Entity,
+        view: DockedView,
+        app: &App,
+    ) -> Section {
+        const WIDTH: f32 = 280.0;
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+        let font = app.renderer.get_font_id_from_name("font").unwrap();
+
+        let mut out = Section::default();
+
+        let (header, other) = match view {
+            DockedView::Guest => (format!("DOCKED"), guest),
+            DockedView::Host => (format!("DOCKED TO"), host),
+        };
+
+        out.push(Label::new(header).font(font_small_bold, app));
+
+        let name = &self.world.get::<&SceneObject>(other).unwrap().name;
+        out.push(
+            Button::fit(name, font, app, vec2(0.0, 0.0))
+                .use_style_link(&STYLE)
+                .on_click(CommandMessages::SelectEntity { entity: other }),
+        );
+        out.push(
+            Button::<CommandMessages>::text(vec2(WIDTH - 16.0, 30.0), "Undock")
+                .use_style(&STYLE)
+                .bound_active(self.controls_enabled.clone())
+                .on_click(CommandMessages::Undock { entity: guest }),
+        );
 
         out
     }
@@ -3001,6 +3062,11 @@ impl Gameplay {
                 };
 
                 self.selection.set_selected(craft, app.seconds as f64);
+
+                {
+                    let mut docks = self.world.get::<&mut PortHost>(craft).unwrap();
+                    docks.dock_gen += 1;
+                }
 
                 self.world.remove_one::<State>(craft).ok();
                 replace_line_path(&mut self.world, &app.renderer, craft, None);
