@@ -88,13 +88,13 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] disable maneuvers for docked craft (maybe replace with extra "undock" button)
     - [x] docked craft card, with link to select craft, undock button
     - [x] fabricating a craft takes up a docking spot, open the station's docking tab on completion
-    - [ ] get rid of the stage/payload distinction, just have parts and craft and modules
+    - [x] get rid of the stage/payload distinction, just have parts and craft and modules
     - [ ] docked craft contribute mass to the host's burns
   - [ ] resource transfer
     - [ ] Dray and Pico have actual H2 and O2 tanks, taken from by engines
     - [ ] resource transfer modal
       - [ ] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
-    - [ ] dont just take H2 and O2 (players have to transfer to docked craft)
+    - [x] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Mining && ISRU
   - [x] Ilmetite smelting (just give generic "metal" for MVP)
   - [x] station rendevous

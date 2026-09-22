@@ -34,10 +34,7 @@ use crate::{
         },
     },
     components::{
-        craft::{
-            replace_line_path, spawn_docked_craft, spawn_orbiting_craft, AssociatedEntity, Command,
-            Payload, ScheduledBurn,
-        },
+        craft::{replace_line_path, spawn_craft, AssociatedEntity, Command, ScheduledBurn},
         factory::{projected_completion, Factory},
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
@@ -929,34 +926,52 @@ impl Gameplay {
         let station_parent = station_parent.expect("generator returned no station host");
         let parent_mu = world.get::<&Body>(station_parent).unwrap().mu;
         let parent_body_radius = world.get::<&Body>(station_parent).unwrap().body_radius;
+        let parent_pos = world.get::<&WorldPosition>(station_parent).unwrap().pos;
 
         let station_payload = parts
             .all()
             .find(|p| p.id == "station_core")
             .unwrap()
-            .instantiate_payload();
+            .instantiate_craft();
 
-        let station = spawn_orbiting_craft(
+        let station = spawn_craft(
             station_payload,
-            vec![],
             SceneObject {
                 bvh_node_id: None,
                 name: String::from("Station"),
             },
             Parent { id: station_parent },
-            State::from_kepler(
-                parent_body_radius * 16.0,
-                0.2,
-                0.0,
-                1.5,
-                0.15,
-                0.15,
-                EphemerisTime::new(0),
-                parent_mu,
-            ),
             &mut world,
             &app.renderer,
             &mut bvh,
+        );
+
+        let station_state = State::from_kepler(
+            parent_body_radius * 16.0,
+            0.2,
+            0.0,
+            1.5,
+            0.15,
+            0.15,
+            EphemerisTime::new(0),
+            parent_mu,
+        );
+        world.insert_one(station, station_state).unwrap();
+
+        replace_line_path(
+            &mut world,
+            &app.renderer,
+            station,
+            Some((
+                WorldPosition { pos: parent_pos },
+                Parent { id: station_parent },
+                LinePathComponent::new(
+                    station_state
+                        .generate_orbit_vertices(8192, parent_mu, None)
+                        .unwrap(),
+                ),
+                AssociatedEntity { associate: station },
+            )),
         );
 
         let mut starting_inventory = PartInventory {
@@ -1459,8 +1474,6 @@ impl Gameplay {
             .get_font_id_from_name("font-small-bold")
             .unwrap();
 
-        let craft = self.world.get::<&Craft>(selected).unwrap();
-
         let craft_dv_text = Rc::new(RefCell::new(String::new()));
 
         if let Ok(_) = self.world.get::<&Docking>(selected) {
@@ -1482,35 +1495,6 @@ impl Gameplay {
                 .font(font, app)
                 .color(STYLE.text),
         );
-
-        for stage in craft.stages_stack.iter() {
-            let fuel_pct = stage.fuel_mass / stage.max_fuel_mass;
-            out.widgets.push(Box::new(
-                Container::new(vec![
-                    Box::new(Label::new(stage.name.clone()).font(font_small_bold, app)),
-                    Box::new(
-                        Label::new(format!(
-                            "{:.0}/{:.0} kg",
-                            stage.fuel_mass, stage.max_fuel_mass
-                        ))
-                        .font(font, app)
-                        .color(if fuel_pct > 0.25 {
-                            STYLE.text
-                        } else {
-                            STYLE.warning
-                        }),
-                    ),
-                    Box::new(
-                        ProgressBar::new(vec2(WIDTH - 24.0, 8.0))
-                            .use_style(&STYLE)
-                            .progress(fuel_pct as f32),
-                    ),
-                ])
-                .flow(Flow::Vertical)
-                .border(STYLE.border, 1.0)
-                .fixed_width(vec2(WIDTH, 10.0)),
-            ));
-        }
 
         out.bindings.push(Binding::new({
             let craft_dv_text = craft_dv_text.clone();
@@ -2942,41 +2926,8 @@ impl Gameplay {
         let now = self.current_et.get();
         let parent = *self.world.get::<&Parent>(station).unwrap();
 
-        // Fuel it from the station's tanks, partially if that's all there is
-        let fuel = def.fuel.unwrap();
-        let want = fuel.max_fuel_mass_kg as f32;
-        let (h2, _) = station_resource_totals(&self.world, station, Resource::Hydrogen, now);
-        let (o2, _) = station_resource_totals(&self.world, station, Resource::Oxygen, now);
-
-        // TODO: I'd rather put the fuels in the fuel struct itself, than have these ratios hardcoded
-        const OF_RATIO: f32 = 5.5;
-        let available = (h2 * (1.0 + OF_RATIO)).min(o2 * (1.0 + OF_RATIO) / OF_RATIO);
-        let loaded = want.min(available);
-
-        take_resource(
-            &self.world,
-            station,
-            Resource::Hydrogen,
-            loaded / (1.0 + OF_RATIO),
-            now,
-        );
-        take_resource(
-            &self.world,
-            station,
-            Resource::Oxygen,
-            loaded * OF_RATIO / (1.0 + OF_RATIO),
-            now,
-        );
-
-        let mut stage = def.instantiate_stage();
-        stage.fuel_mass = loaded as f64;
-
-        let craft = spawn_docked_craft(
-            Payload {
-                name: def.name.clone(),
-                dry_mass: 0.0,
-            },
-            vec![stage],
+        let craft = spawn_craft(
+            def.instantiate_craft(),
             SceneObject {
                 bvh_node_id: None,
                 name: def.name.clone(),
@@ -2992,18 +2943,6 @@ impl Gameplay {
                 PortHost {
                     dock_gen: 0,
                     ports: def.ports,
-                },
-            )
-            .unwrap();
-
-        let own_port = next_free_port(&self.world, craft).expect("gotta have a port babey");
-        self.world
-            .insert_one(
-                craft,
-                Docking {
-                    host: station,
-                    host_port,
-                    own_port,
                 },
             )
             .unwrap();
@@ -3044,6 +2983,18 @@ impl Gameplay {
                 )),
             };
         }
+
+        let own_port = next_free_port(&self.world, craft).expect("gotta have a port babey");
+        self.world
+            .insert_one(
+                craft,
+                Docking {
+                    host: station,
+                    host_port,
+                    own_port,
+                },
+            )
+            .unwrap();
 
         self.selection.crafts.push(craft);
     }

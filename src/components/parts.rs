@@ -6,7 +6,7 @@ use std::{
 use crate::{
     astro::units::JOULES_PER_KWH,
     components::{
-        craft::{Payload, Stage},
+        craft::{Craft, Engine},
         station::Resource,
     },
 };
@@ -52,9 +52,7 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FuelSpec {
-    pub max_fuel_mass_kg: f64,
     pub isp: f64,
-    pub thrust_kn: f64,
 }
 
 /// Collection of parsed and validated part definitions
@@ -202,22 +200,24 @@ pub fn id_hash(id: &str) -> u64 {
 }
 
 impl PartDef {
-    pub fn instantiate_stage(&self) -> Stage {
-        Stage {
-            name: self.name.clone(),
+    pub fn instantiate_craft(&self) -> Craft {
+        Craft {
+            part_id: self.id_hash(),
             dry_mass: self.dry_mass_kg,
-            fuel_mass: self.fuel.unwrap().max_fuel_mass_kg, // starts full
-            max_fuel_mass: self.fuel.unwrap().max_fuel_mass_kg,
-            thrust_kn: self.fuel.unwrap().thrust_kn,
-            isp: self.fuel.unwrap().isp,
+            engine: self.instantiate_engine(),
+
+            command: None,
+            command_scheduled: false,
+            line_path_entity: None,
         }
     }
 
-    pub fn instantiate_payload(&self) -> Payload {
-        Payload {
-            name: self.name.clone(),
-            dry_mass: self.dry_mass_kg,
-        }
+    fn instantiate_engine(&self) -> Option<Engine> {
+        let fuel = &self.fuel?;
+        Some(Engine {
+            fuel_mass: 0.0,
+            isp: fuel.isp,
+        })
     }
 
     pub fn id_hash(&self) -> u64 {

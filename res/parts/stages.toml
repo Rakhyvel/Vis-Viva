@@ -9,9 +9,7 @@ ports = 1
 ports_required = 1
 
 [parts.fuel]
-max_fuel_mass_kg = 8.0
 isp = 450.0
-thrust_kn = 0.05
 
 
 [[parts]]
@@ -25,9 +23,7 @@ ports = 4
 ports_required = 1
 
 [parts.fuel]
-max_fuel_mass_kg = 875.0
 isp = 450.0
-thrust_kn = 1.0
 
 [[parts.modules]]
 kind = "store"
