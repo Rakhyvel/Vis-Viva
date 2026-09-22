@@ -5,7 +5,8 @@ desc = 'A tiny disposable probe. Carries sensors and not much else. Use it to sc
 dry_mass_kg = 12.0
 energy_kwh = 1800.0
 inputs = {metal = 2}
-ports = 0 # no ports, disposable
+ports = 1
+ports_required = 1
 
 [parts.fuel]
 max_fuel_mass_kg = 8.0
@@ -21,6 +22,7 @@ dry_mass_kg = 500.0
 energy_kwh = 7#200.0
 #inputs = {metal = 4}
 ports = 4
+ports_required = 1
 
 [parts.fuel]
 max_fuel_mass_kg = 875.0

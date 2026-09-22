@@ -268,6 +268,7 @@ impl FabricatorUi {
             let unit = match line.kind {
                 CostKind::Part(..) => "",
                 CostKind::Resource(..) => " kg",
+                CostKind::Port => " port",
             };
 
             let have_text = if line.need > line.have {
@@ -286,6 +287,9 @@ impl FabricatorUi {
                 }
                 CostKind::Resource(r) => {
                     format!("{:.0} kg {}{}", line.need, r.long_name(), have_text)
+                }
+                CostKind::Port => {
+                    format!("{:.0} port", line.need)
                 }
             };
             inputs_rows.push(Box::new(Label::new(text).font(font, app).color(

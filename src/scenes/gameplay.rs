@@ -35,17 +35,17 @@ use crate::{
     },
     components::{
         craft::{
-            replace_line_path, spawn_orbiting_craft, AssociatedEntity, Command, Payload,
-            ScheduledBurn, Stage,
+            replace_line_path, spawn_docked_craft, spawn_orbiting_craft, AssociatedEntity, Command,
+            Payload, ScheduledBurn, Stage,
         },
         factory::{projected_completion, Factory},
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
-            add_resource, allocate_ports, commit_station, free_ports, next_reservoir_limits,
-            resource_store_amount, station_r_au, station_resource_amount_flow,
-            station_resource_totals, stored_mass_kg, take_resource, Docking, Electrolyzer, Miner,
-            PortHost, Resource, ResourceStore, SolarPanel, Station,
+            add_resource, allocate_ports, commit_station, free_ports, next_free_port,
+            next_reservoir_limits, resource_store_amount, station_r_au,
+            station_resource_amount_flow, station_resource_totals, stored_mass_kg, take_resource,
+            Docking, Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel, Station,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },
@@ -371,8 +371,18 @@ impl Scene for Gameplay {
             part_id,
         }) = self.fabricator_ui.update(app)
         {
+            let host = self.world.get::<&Docking>(fabricator).unwrap().host;
+            let ports = self.parts.get(part_id).map_or(0, |d| d.cost.ports_required);
+
+            let reserved_port = if ports > 0 {
+                next_free_port(&self.world, host)
+            } else {
+                None
+            };
+
             let mut factory = self.world.get::<&mut Factory>(fabricator).unwrap();
-            factory.pending_job = Some(part_id)
+            factory.pending_job = Some(part_id);
+            factory.reserved_port = reserved_port;
         }
 
         if self.vab_ui.update(app) {
@@ -444,11 +454,13 @@ impl Scene for Gameplay {
                         let mut factory =
                             self.world.get::<&mut Factory>(fabricator_entity).unwrap();
                         factory.pending_job = None;
+                        factory.reserved_port = None;
                     }
                     CommandMessages::CancelActiveFabricator { fabricator_entity } => {
                         let mut factory =
                             self.world.get::<&mut Factory>(fabricator_entity).unwrap();
                         factory.current_job = None;
+                        factory.reserved_port = None;
                     }
                     CommandMessages::ToggleFabricator { fabricator_entity } => {
                         self.commit_station();
@@ -1132,6 +1144,7 @@ impl Gameplay {
                 pending_job: None,
                 power_watts: 5000.0,
                 enabled: false,
+                reserved_port: None,
             },
             Parent { id: station },
         ));
@@ -2171,6 +2184,24 @@ impl Gameplay {
             .filter(|docking| docking.own_port == i)
         {
             out.merge(self.docked_craft_section(docking.host, host, DockedView::Host, app));
+        } else if let Some((fab, part_id)) = self
+            .world
+            .query::<(&Docking, &Factory)>()
+            .iter()
+            .find_map(|(e, (d, f))| {
+                if d.host != host || f.reserved_port != Some(i) {
+                    return None;
+                }
+                // prefer the active job, both can be Some!
+                let part_id = f
+                    .current_job
+                    .as_ref()
+                    .map(|j| j.part_id)
+                    .or(f.pending_job)?;
+                Some((e, part_id))
+            })
+        {
+            out.merge(self.reserved_port_section(fab, part_id, app));
         } else {
             out.push(Label::new("Available").font(font_small_italic, app));
         }
@@ -2558,6 +2589,46 @@ impl Gameplay {
                 .bound_active(self.controls_enabled.clone())
                 .on_click(CommandMessages::Undock { entity: guest }),
         );
+
+        out
+    }
+
+    fn reserved_port_section(&self, fab: Entity, part_id: u64, app: &App) -> Section {
+        let font_small_bold = app
+            .renderer
+            .get_font_id_from_name("font-small-bold")
+            .unwrap();
+        let font = app.renderer.get_font_id_from_name("font").unwrap();
+
+        let mut out = Section::default();
+        let name = self.parts.get(part_id).map_or("???", |d| d.name.as_str());
+
+        out.push(Label::new("RESERVED").font(font_small_bold, app));
+        out.push(Label::new(format!("Building {name}")).font(font, app));
+
+        let countdown = Rc::new(RefCell::new(String::new()));
+        out.push(Label::bound(countdown.clone()).font(font, app));
+
+        out.bindings.push(Binding::new({
+            let current_et = self.current_et.clone();
+            move |world: &World| {
+                let Ok(factory) = world.get::<&Factory>(fab) else {
+                    return;
+                };
+                let now = current_et.get();
+                let s = match factory.current_job.as_ref() {
+                    None => String::from("Queued"),
+                    Some(job) => match job.completion_et(&factory, now) {
+                        Some(et) if now >= et => String::from("DONE"),
+                        Some(et) => format!("T- {}", (et - now).short_duration()),
+                        None => String::from("T-"),
+                    },
+                };
+                if *countdown.borrow() != s {
+                    *countdown.borrow_mut() = s;
+                }
+            }
+        }));
 
         out
     }
@@ -3125,8 +3196,15 @@ impl Gameplay {
             }
 
             // For now just eject the stage
-            if def.fuel.is_some() {
-                self.eject_craft(parent, &def, app);
+            if def.cost.ports_required > 0 {
+                let host_port = {
+                    self.world
+                        .get::<&Factory>(fab)
+                        .unwrap()
+                        .reserved_port
+                        .unwrap()
+                };
+                self.deliver_craft(parent, &def, host_port, app);
             } else {
                 let mut part_inventory = self.world.get::<&mut PartInventory>(parent).unwrap();
                 part_inventory.add(part_id, 1);
@@ -3135,13 +3213,13 @@ impl Gameplay {
             // clear job so that factory becomes idle
             if let Ok(mut f) = self.world.get::<&mut Factory>(fab) {
                 f.current_job = None;
+                f.reserved_port = None
             }
         }
     }
 
-    fn eject_craft(&mut self, station: Entity, def: &PartDef, app: &App) {
+    fn deliver_craft(&mut self, station: Entity, def: &PartDef, host_port: u32, app: &App) {
         let now = self.current_et.get();
-        let state = *self.world.get::<&State>(station).unwrap();
         let parent = *self.world.get::<&Parent>(station).unwrap();
 
         // Fuel it from the station's tanks, partially if that's all there is
@@ -3173,7 +3251,7 @@ impl Gameplay {
         let mut stage = def.instantiate_stage();
         stage.fuel_mass = loaded as f64;
 
-        let craft = spawn_orbiting_craft(
+        let craft = spawn_docked_craft(
             Payload {
                 name: def.name.clone(),
                 dry_mass: 0.0,
@@ -3184,18 +3262,28 @@ impl Gameplay {
                 name: def.name.clone(),
             },
             parent,
-            state,
             &mut self.world,
             &app.renderer,
             &mut self.bvh,
         );
-
         self.world
             .insert_one(
                 craft,
                 PortHost {
                     dock_gen: 0,
                     ports: def.ports,
+                },
+            )
+            .unwrap();
+
+        let own_port = next_free_port(&self.world, craft).expect("gotta have a port babey");
+        self.world
+            .insert_one(
+                craft,
+                Docking {
+                    host: station,
+                    host_port,
+                    own_port,
                 },
             )
             .unwrap();

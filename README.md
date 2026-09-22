@@ -85,12 +85,11 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
       - [x] docked craft take up a port
       - [x] a dock is refused if the host or target has no free port
     - [x] breadcrumbs list stations for docked craft
-    - [ ] disable maneuvers for docked craft (maybe replace with extra "undock" button)
-    - [ ] docked craft card, with link to select craft, undock button
-    - [ ] docked craft contribute mass to the host's burns
+    - [x] disable maneuvers for docked craft (maybe replace with extra "undock" button)
+    - [x] docked craft card, with link to select craft, undock button
     - [ ] fabricating a craft takes up a docking spot, open the station's docking tab on completion
-      - [ ] If we make this the same requirement for modules, modules could just take up slots, the same as craft
     - [ ] get rid of the stage/payload distinction, just have parts and craft and modules
+    - [ ] docked craft contribute mass to the host's burns
   - [ ] resource transfer
     - [ ] Dray and Pico have actual H2 and O2 tanks, taken from by engines
     - [ ] resource transfer modal

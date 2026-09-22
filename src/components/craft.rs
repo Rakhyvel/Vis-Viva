@@ -376,6 +376,61 @@ pub fn spawn_orbiting_craft(
 
     craft_entity
 }
+pub fn spawn_docked_craft(
+    payload: Payload,
+    stages_stack: Vec<Stage>,
+    mut scene_obj: SceneObject,
+    parent: Parent,
+    world: &mut World,
+    renderer: &RenderContext,
+    bvh: &mut BVH<Entity>,
+) -> Entity {
+    let craft_mesh = renderer.get_mesh_id_from_name("cone").unwrap();
+
+    let position: DVec3 = vec3(0., 0., 0.);
+    let scale_vec: DVec3 = vec3(0.01, 0.01, 0.01);
+
+    let texture_id = renderer.get_texture_id_from_name("europa").unwrap();
+
+    let craft_entity = world.spawn((
+        WorldPosition { pos: position },
+        ModelComponent::new(
+            craft_mesh,
+            texture_id,
+            nalgebra_glm::convert(position),
+            nalgebra_glm::convert(scale_vec),
+        ),
+    ));
+
+    let bvh_node_id = bvh.insert(
+        craft_entity,
+        renderer
+            .get_mesh_aabb(craft_mesh)
+            .scale(nalgebra_glm::convert(scale_vec))
+            .translate(nalgebra_glm::convert(position)),
+    );
+
+    scene_obj.bvh_node_id = Some(bvh_node_id);
+
+    world
+        .insert(
+            craft_entity,
+            (
+                scene_obj,
+                parent,
+                Craft {
+                    stages_stack,
+                    payload,
+                    command: None,
+                    command_scheduled: false,
+                    line_path_entity: None,
+                },
+            ),
+        )
+        .unwrap();
+
+    craft_entity
+}
 
 pub fn replace_line_path(
     world: &mut World,

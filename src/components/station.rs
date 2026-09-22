@@ -344,45 +344,40 @@ pub fn allocate_ports(world: &World, craft: Entity, station: Entity) -> Option<(
     })
 }
 
-fn next_free_port(world: &World, host: Entity) -> Option<u32> {
-    let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
-
-    let docked_to_host: Vec<u32> = world
+fn used_ports(world: &World, host: Entity) -> Vec<u32> {
+    let mut used: Vec<u32> = world
         .query::<&Docking>()
         .iter()
-        .filter_map(|(_, docking)| {
-            if docking.host == host {
-                Some(docking.host_port)
-            } else {
-                None
-            }
-        })
+        .filter(|(_, d)| d.host == host)
+        .map(|(_, d)| d.host_port)
         .collect();
 
-    for i in 0..total {
-        if docked_to_host.iter().any(|j| *j == i) {
-            continue;
-        }
-
-        return Some(i);
+    // Our own attachment spends one of our ports
+    if let Ok(d) = world.get::<&Docking>(host) {
+        used.push(d.own_port);
     }
 
-    None
+    used.extend(
+        world
+            .query::<(&Docking, &Factory)>()
+            .iter()
+            .filter(|(_, (d, _))| d.host == host)
+            .filter_map(|(_, (_, f))| f.reserved_port),
+    );
+
+    used
+}
+
+pub fn next_free_port(world: &World, host: Entity) -> Option<u32> {
+    let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
+    let used = used_ports(world, host);
+    (0..total).find(|i| !used.contains(i))
 }
 
 pub fn free_ports(world: &World, host: Entity) -> u32 {
     let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
-
-    let docked = world
-        .query::<&Docking>()
-        .iter()
-        .filter(|(_, docking)| docking.host == host)
-        .count() as u32;
-
-    // Host spends 1 port if it's docked somewhere else
-    let own = world.get::<&Docking>(host).is_ok() as u32;
-
-    total.saturating_sub(docked + own)
+    let used = used_ports(world, host);
+    total.saturating_sub((0..total).filter(|i| used.contains(i)).count() as u32)
 }
 
 pub struct SolarPanel {

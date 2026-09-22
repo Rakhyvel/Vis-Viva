@@ -15,7 +15,7 @@ use crate::{
         craft::Landed,
         inventory::PartInventory,
         parts::{PartCost, PartRegistry},
-        station::{station_resource_totals, Docking, Resource},
+        station::{free_ports, station_resource_totals, Docking, Resource},
         tile::{SurfaceTile, TileMap},
     },
 };
@@ -25,6 +25,8 @@ pub struct Factory {
     pub pending_job: Option<u64>,
     pub power_watts: f32,
     pub enabled: bool,
+    /// Port on the host held for the craft we're building
+    pub reserved_port: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -90,6 +92,7 @@ pub fn spawn_factory(
                     pending_job: None,
                     power_watts: 5.0,
                     enabled: false,
+                    reserved_port: None,
                 },
             ),
         )
@@ -146,6 +149,7 @@ impl FactoryJob {
 pub enum CostKind {
     Part(u64),
     Resource(Resource),
+    Port,
 }
 
 pub struct CostLine {
@@ -185,6 +189,14 @@ pub fn cost_status(
             kind: CostKind::Resource(*r),
             need: *need,
             have,
+        });
+    }
+
+    if cost.ports_required > 0 {
+        line.push(CostLine {
+            kind: CostKind::Port,
+            need: cost.ports_required as f32,
+            have: free_ports(world, station) as f32,
         });
     }
 

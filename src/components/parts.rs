@@ -33,6 +33,8 @@ pub struct PartRaw {
     #[serde(default)]
     byproducts: HashMap<Resource, f32>,
     energy_kwh: f32,
+    #[serde(default)]
+    ports_required: u32,
     fuel: Option<FuelSpec>,
     #[serde(default = "default_true")]
     fabricatable: bool,
@@ -84,6 +86,7 @@ pub struct PartCost {
     pub parts: Vec<(u64, u32)>,
     pub resources: Vec<(Resource, f32)>,
     pub energy_joules: f32,
+    pub ports_required: u32,
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -163,6 +166,7 @@ impl PartRegistry {
                     parts: inputs,
                     resources,
                     energy_joules: raw.energy_kwh * JOULES_PER_KWH as f32,
+                    ports_required: raw.ports_required,
                 },
                 fabricatable: raw.fabricatable,
                 byproducts,
