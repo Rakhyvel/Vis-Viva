@@ -5,11 +5,22 @@ desc = 'A tiny disposable probe. Carries sensors and not much else. Use it to sc
 dry_mass_kg = 12.0
 energy_kwh = 1800.0
 inputs = {metal = 2}
-ports = 1
+ports = 3
 ports_required = 1
 
 [parts.fuel]
 isp = 450.0
+
+# TODO: Hydrolox doesn't make sense for a small probe...
+[[parts.modules]]
+kind = "store"
+resource = "hydrogen"
+capacity = 4.0
+
+[[parts.modules]]
+kind = "store"
+resource = "oxygen"
+capacity = 23.0
 
 
 [[parts]]
@@ -19,7 +30,7 @@ desc = 'Can land on bodies, mine resources like water ice and Ilmenite, and brin
 dry_mass_kg = 500.0
 energy_kwh = 7#200.0
 #inputs = {metal = 4}
-ports = 4
+ports = 6
 ports_required = 1
 
 [parts.fuel]
@@ -30,6 +41,18 @@ kind = "store"
 resource = "energy"
 amount = 5_000_000.0
 capacity = 5_000_000.0
+
+[[parts.modules]]
+kind = "store"
+resource = "hydrogen"
+capacity = 135.0
+amount = 135.0
+
+[[parts.modules]]
+kind = "store"
+resource = "oxygen"
+capacity = 740.0
+amount = 740.0
 
 [[parts.modules]]
 kind = "store"

@@ -214,10 +214,7 @@ impl PartDef {
 
     fn instantiate_engine(&self) -> Option<Engine> {
         let fuel = &self.fuel?;
-        Some(Engine {
-            fuel_mass: 0.0,
-            isp: fuel.isp,
-        })
+        Some(Engine { isp: fuel.isp })
     }
 
     pub fn id_hash(&self) -> u64 {

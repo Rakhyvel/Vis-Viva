@@ -22,7 +22,7 @@ use crate::{
     },
     components::{
         body::{Body, Parent, SceneObject},
-        craft::{Command, Craft, Landed},
+        craft::{craft_dv, Command, Craft, Landed},
         station::{allocate_ports, stored_mass_kg},
     },
     ui::{
@@ -426,12 +426,8 @@ impl ManeuverModal {
         self.porkchop = self.compute_porkchop(craft, world);
 
         if let Some(chop) = &self.porkchop {
-            let cargo_kg = stored_mass_kg(world, craft, current_et);
-            self.budget = world
-                .get::<&Craft>(craft)
-                .map(|c| c.total_remaining_dv(cargo_kg))
-                .unwrap_or(0.0)
-                / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
+            self.budget =
+                craft_dv(world, craft, current_et) / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
             let bytes = self.porkchop_rgba(chop);
 
             app.renderer.update_texture_rgba(
@@ -526,14 +522,10 @@ impl ManeuverModal {
             *self.inclination_text.borrow_mut() = inclination;
         }
 
-        let cargo_kg: f64 = self.computed_plan.as_ref().map_or_else(
+        let craft_dv = self.computed_plan.as_ref().map_or_else(
             || 0.0,
-            |p| stored_mass_kg(world, self.craft.unwrap(), p.departure_et()),
+            |p| craft_dv(world, self.craft.unwrap(), p.departure_et()),
         );
-        let craft_dv = world
-            .get::<&Craft>(self.craft.unwrap())
-            .unwrap()
-            .total_remaining_dv(cargo_kg);
 
         let can_afford_plan = self
             .computed_plan

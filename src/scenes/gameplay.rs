@@ -34,7 +34,10 @@ use crate::{
         },
     },
     components::{
-        craft::{replace_line_path, spawn_craft, AssociatedEntity, Command, ScheduledBurn},
+        craft::{
+            apply_burn, craft_dv, replace_line_path, spawn_craft, AssociatedEntity, Command,
+            ScheduledBurn,
+        },
         factory::{projected_completion, Factory},
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
@@ -1500,11 +1503,7 @@ impl Gameplay {
             let craft_dv_text = craft_dv_text.clone();
             let now = self.current_et.clone();
             move |world: &World| {
-                let Ok(craft) = world.get::<&Craft>(selected) else {
-                    return;
-                };
-                let cargo_kg = stored_mass_kg(world, selected, now.get());
-                let craft_dv = craft.total_remaining_dv(cargo_kg);
+                let craft_dv = craft_dv(world, selected, now.get());
                 let s = format!("Total dv: {:.0} m/s", craft_dv);
                 if *craft_dv_text.borrow() != s {
                     *craft_dv_text.borrow_mut() = s;
@@ -2787,11 +2786,7 @@ impl Gameplay {
                         AssociatedEntity { associate: craft },
                     )),
                 );
-                let cargo_kg = stored_mass_kg(&self.world, craft, self.current_et.get());
-                {
-                    let mut craft_component = self.world.get::<&mut Craft>(craft).unwrap();
-                    craft_component.burn(dv, cargo_kg);
-                }
+                apply_burn(&self.world, craft, dv, self.current_et.get());
                 self.world.remove_one::<State>(craft).ok();
                 self.world
                     .insert(craft, (new_orbit, Parent { id: parent }))
