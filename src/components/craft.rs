@@ -24,18 +24,12 @@ use crate::{
 };
 
 pub struct Craft {
-    pub part_id: u64,
     pub dry_mass: f64,
-    pub engine: Option<Engine>,
+    pub isp: Option<f64>,
 
     pub command: Option<Command>,
     pub command_scheduled: bool,
     pub line_path_entity: Option<Entity>,
-}
-
-#[derive(Clone, Copy)]
-pub struct Engine {
-    pub isp: f64, // [s]
 }
 
 pub struct AssociatedEntity {
@@ -298,7 +292,7 @@ pub fn apply_burn(world: &World, craft: Entity, requested_dv: f64, t: EphemerisT
     let Some((isp, dry_mass)) = world
         .get::<&Craft>(craft)
         .ok()
-        .and_then(|c| Some((c.engine?.isp, c.dry_mass)))
+        .and_then(|c| Some((c.isp?, c.dry_mass)))
     else {
         return; // no engine
     };
@@ -323,7 +317,7 @@ pub fn craft_dv(world: &World, craft: Entity, t: EphemerisTime) -> f64 {
     let Some((isp, dry_mass)) = world
         .get::<&Craft>(craft)
         .ok()
-        .and_then(|c| Some((c.engine?.isp, c.dry_mass)))
+        .and_then(|c| Some((c.isp?, c.dry_mass)))
     else {
         return 0.0; // no engine!
     };

@@ -44,8 +44,8 @@ use crate::{
         station::{
             add_resource, allocate_ports, commit_station, free_ports, next_free_port,
             next_reservoir_limits, resource_store_amount, station_r_au,
-            station_resource_amount_flow, station_resource_totals, stored_mass_kg, take_resource,
-            Docking, Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel, Station,
+            station_resource_amount_flow, station_resource_totals, take_resource, Docking,
+            Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel, Station,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },

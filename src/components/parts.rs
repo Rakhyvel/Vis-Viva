@@ -5,10 +5,7 @@ use std::{
 
 use crate::{
     astro::units::JOULES_PER_KWH,
-    components::{
-        craft::{Craft, Engine},
-        station::Resource,
-    },
+    components::{craft::Craft, station::Resource},
 };
 
 /// A file full of parts definitions
@@ -35,7 +32,8 @@ pub struct PartRaw {
     energy_kwh: f32,
     #[serde(default)]
     ports_required: u32,
-    fuel: Option<FuelSpec>,
+    #[serde(default)]
+    isp: Option<f64>,
     #[serde(default = "default_true")]
     fabricatable: bool,
     #[serde(default)]
@@ -46,13 +44,6 @@ pub struct PartRaw {
 
 fn default_true() -> bool {
     true
-}
-
-/// On-wire spec for fuel, for stages
-#[derive(Debug, Clone, Copy, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FuelSpec {
-    pub isp: f64,
 }
 
 /// Collection of parsed and validated part definitions
@@ -73,7 +64,7 @@ pub struct PartDef {
 
     pub byproducts: Vec<(Resource, f32)>,
     pub cost: PartCost,
-    pub fuel: Option<FuelSpec>,
+    pub isp: Option<f64>,
 
     pub ports: u32,
     pub modules: Vec<ModuleSpec>,
@@ -168,7 +159,7 @@ impl PartRegistry {
                 },
                 fabricatable: raw.fabricatable,
                 byproducts,
-                fuel: raw.fuel,
+                isp: raw.isp,
                 id: raw.id,
                 name: raw.name,
                 desc: raw.desc,
@@ -202,19 +193,13 @@ pub fn id_hash(id: &str) -> u64 {
 impl PartDef {
     pub fn instantiate_craft(&self) -> Craft {
         Craft {
-            part_id: self.id_hash(),
             dry_mass: self.dry_mass_kg,
-            engine: self.instantiate_engine(),
+            isp: self.isp,
 
             command: None,
             command_scheduled: false,
             line_path_entity: None,
         }
-    }
-
-    fn instantiate_engine(&self) -> Option<Engine> {
-        let fuel = &self.fuel?;
-        Some(Engine { isp: fuel.isp })
     }
 
     pub fn id_hash(&self) -> u64 {

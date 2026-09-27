@@ -7,20 +7,18 @@ energy_kwh = 1800.0
 inputs = {metal = 2}
 ports = 3
 ports_required = 1
-
-[parts.fuel]
 isp = 450.0
 
 # TODO: Hydrolox doesn't make sense for a small probe...
 [[parts.modules]]
 kind = "store"
 resource = "hydrogen"
-capacity = 4.0
+capacity = 1.2
 
 [[parts.modules]]
 kind = "store"
 resource = "oxygen"
-capacity = 23.0
+capacity = 6.8
 
 
 [[parts]]
@@ -32,8 +30,6 @@ energy_kwh = 7#200.0
 #inputs = {metal = 4}
 ports = 6
 ports_required = 1
-
-[parts.fuel]
 isp = 450.0
 
 [[parts.modules]]
@@ -51,8 +47,8 @@ amount = 135.0
 [[parts.modules]]
 kind = "store"
 resource = "oxygen"
-capacity = 740.0
-amount = 740.0
+capacity = 742.5
+amount = 742.5
 
 [[parts.modules]]
 kind = "store"

@@ -23,7 +23,7 @@ use crate::{
     components::{
         body::{Body, Parent, SceneObject},
         craft::{craft_dv, Command, Craft, Landed},
-        station::{allocate_ports, stored_mass_kg},
+        station::allocate_ports,
     },
     ui::{
         container::Container,
