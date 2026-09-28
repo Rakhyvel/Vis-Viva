@@ -34,10 +34,7 @@ use crate::{
         },
     },
     components::{
-        craft::{
-            apply_burn, craft_dv, replace_line_path, spawn_craft, AssociatedEntity, Command,
-            ScheduledBurn,
-        },
+        craft::{replace_line_path, spawn_craft, AssociatedEntity, Command, ScheduledBurn},
         station::Station,
     },
     container,
@@ -60,6 +57,7 @@ use crate::{
         },
         industry::{commit_pending_builds, projected_completion, Factory},
         parts::{id_hash, ModuleSpec, PartDef, PartInventory, PartRegistry},
+        propulsion::{apply_burn, craft_dv, Craft},
         resources::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
             station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
@@ -86,7 +84,6 @@ use crate::{
 use crate::{
     components::{
         body::{spawn_body, SceneObject},
-        craft::Craft,
         icosphere,
     },
     generation::solar_system_gen::{self},

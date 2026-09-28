@@ -20,11 +20,12 @@ use crate::{
         },
         units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
-    components::craft::{craft_dv, Command, Craft},
+    components::craft::Command,
     sim::{
         bodies::Body,
         docking::allocate_ports,
         hierarchy::{Landed, Named, Parent},
+        propulsion::{craft_dv, Craft},
     },
     ui::{
         container::Container,

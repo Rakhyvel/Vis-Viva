@@ -1,7 +1,7 @@
 ///! Ports and the dock-tree
 use hecs::{Entity, World};
 
-use crate::{components::craft::Craft, sim::industry::Factory};
+use crate::sim::{industry::Factory, propulsion::Craft};
 
 /// This entity is attached to some port on `host` via one of our own ports
 pub struct Docking {
