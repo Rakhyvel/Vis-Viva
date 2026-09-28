@@ -11,44 +11,16 @@ use hecs::{Entity, World};
 use nalgebra_glm::{vec3, DVec3};
 
 use crate::{
-    astro::{state::State, units::G},
-    components::{
-        craft::AssociatedEntity,
-        inventory::PartInventory,
-        tile::{TileMap, TileSets},
+    astro::state::State,
+    components::{craft::AssociatedEntity, inventory::PartInventory},
+    sim::{
+        bodies::{Body, Category, TileMap, TileSets},
+        hierarchy::{Named, Parent},
     },
-    sim::hierarchy::{Named, Parent},
 };
 
 pub struct SceneObject {
     pub bvh_node_id: Option<BVHNodeId>,
-}
-
-#[derive(Clone, Copy)]
-pub struct Body {
-    pub category: Category,
-    pub body_radius: f64, // In earth radii
-    pub rotation_period_hours: f64,
-    #[allow(unused)]
-    pub rotation: f64,
-    pub atmos_pressure: f64, // In bar
-    pub temperature: f64,    // In K
-    pub core_mass_fraction: f64,
-    pub magnetic_field: bool,
-    pub density: f64, // In g/cm^3
-    pub mu: f64,      // In (earth radii)^3 * years^-2
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Category {
-    Dwarf,
-    SubEarth,
-    EarthLike,
-    SuperEarth,
-    MiniNeptune,
-    GasGiant,
-    SuperGasGiant,
-    Star,
 }
 
 pub fn spawn_body(
@@ -151,22 +123,6 @@ pub fn spawn_body(
 }
 
 impl Body {
-    pub fn gaseous(&self) -> bool {
-        self.atmos_pressure > 1.58
-    }
-
-    pub fn mass(&self) -> f64 {
-        self.mu / G
-    }
-
-    pub fn habitable(&self) -> bool {
-        (0.8..1.5).contains(&self.atmos_pressure) && (270.0..300.0).contains(&self.temperature)
-    }
-
-    pub fn is_giant(&self) -> bool {
-        self.body_radius > 2.5
-    }
-
     fn get_texture_id(&self, renderer: &RenderContext) -> TextureId {
         if self.category == Category::Star {
             return renderer.get_texture_id_from_name("sun").unwrap();

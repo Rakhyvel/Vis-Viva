@@ -2,6 +2,54 @@ use apricot::tri::Tri;
 use hecs::Entity;
 use nalgebra_glm::DVec3;
 
+use crate::astro::units::G;
+
+///! Celestial bodies
+#[derive(Debug, Clone, Copy)]
+pub struct Body {
+    pub category: Category,
+    pub body_radius: f64, // In earth radii
+    pub rotation_period_hours: f64,
+    #[allow(unused)]
+    pub rotation: f64,
+    pub atmos_pressure: f64, // In bar
+    pub temperature: f64,    // In K
+    pub core_mass_fraction: f64,
+    pub magnetic_field: bool,
+    pub density: f64, // In g/cm^3
+    pub mu: f64,      // In (earth radii)^3 * years^-2
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Category {
+    Dwarf,
+    SubEarth,
+    EarthLike,
+    SuperEarth,
+    MiniNeptune,
+    GasGiant,
+    SuperGasGiant,
+    Star,
+}
+
+impl Body {
+    pub fn gaseous(&self) -> bool {
+        self.atmos_pressure > 1.58
+    }
+
+    pub fn mass(&self) -> f64 {
+        self.mu / G
+    }
+
+    pub fn habitable(&self) -> bool {
+        (0.8..1.5).contains(&self.atmos_pressure) && (270.0..300.0).contains(&self.temperature)
+    }
+
+    pub fn is_giant(&self) -> bool {
+        self.body_radius > 2.5
+    }
+}
+
 /// Tags a building entity with the tile index it occupies on its parent body
 #[allow(dead_code)]
 pub struct SurfaceTile {

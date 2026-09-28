@@ -6,8 +6,11 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{body::Body, craft::Craft, factory::Factory, parts::PartRegistry},
-    sim::hierarchy::{Landed, Parent},
+    components::{craft::Craft, factory::Factory, parts::PartRegistry},
+    sim::{
+        bodies::Body,
+        hierarchy::{Landed, Parent},
+    },
 };
 
 pub struct Station {

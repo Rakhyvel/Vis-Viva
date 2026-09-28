@@ -8,7 +8,7 @@ use crate::{
         state::State,
         units::{EARTH_MASSES_PER_SUN_MASS, EARTH_RADII_PER_AU, G, HOURS_PER_YEAR, SUN_MU},
     },
-    components::body::{Body, Category},
+    sim::bodies::{Body, Category},
 };
 
 const DENSITY_IRON_G_CM3: f64 = 7.8;

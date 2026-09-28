@@ -48,7 +48,6 @@ use crate::{
             transfer_resource, Docking, Electrolyzer, Miner, PortHost, Resource, ResourceStore,
             SolarPanel, Station,
         },
-        tile::{SurfaceTile, TileMap, TileSets},
     },
     container,
     generation::{lexicon::Lexicon, polygon},
@@ -61,9 +60,12 @@ use crate::{
         starbox::Starbox,
         transfer::{TransferResult, TransferUi},
     },
-    sim::hierarchy::{
-        ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system, Landed,
-        Named, Parent,
+    sim::{
+        bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
+        hierarchy::{
+            ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system,
+            Landed, Named, Parent,
+        },
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
@@ -84,7 +86,7 @@ use crate::{
 
 use crate::{
     components::{
-        body::{spawn_body, Body, Category, SceneObject},
+        body::{spawn_body, SceneObject},
         craft::Craft,
         icosphere,
     },

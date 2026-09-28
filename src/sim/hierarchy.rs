@@ -7,7 +7,8 @@ use nalgebra_glm::{vec3, DVec3};
 
 use crate::{
     astro::{epoch::EphemerisTime, state::State, units::SUN_MU},
-    components::{body::Body, station::Docking},
+    components::station::Docking,
+    sim::bodies::Body,
 };
 
 /// Component relating an entity to a parent body

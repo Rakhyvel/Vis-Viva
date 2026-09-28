@@ -21,11 +21,13 @@ use crate::{
         units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
     components::{
-        body::Body,
         craft::{craft_dv, Command, Craft},
         station::allocate_ports,
     },
-    sim::hierarchy::{Landed, Named, Parent},
+    sim::{
+        bodies::Body,
+        hierarchy::{Landed, Named, Parent},
+    },
     ui::{
         container::Container,
         dropdown::Dropdown,

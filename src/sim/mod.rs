@@ -1,6 +1,7 @@
 ///! Headless game simulation code
 use hecs::World;
 
+pub mod bodies;
 pub mod hierarchy;
 
 pub struct Sim {
