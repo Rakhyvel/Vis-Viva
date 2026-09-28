@@ -42,10 +42,11 @@ use crate::{
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
-            add_resource, allocate_ports, commit_station, free_ports, next_free_port,
+            add_resource, allocate_ports, commit_station, dock_tree, free_ports, next_free_port,
             next_reservoir_limits, resource_store_amount, station_r_au,
-            station_resource_amount_flow, station_resource_totals, take_resource, Docking,
-            Electrolyzer, Miner, PortHost, Resource, ResourceStore, SolarPanel, Station,
+            station_resource_amount_flow, station_resource_totals, take_resource,
+            transfer_resource, Docking, Electrolyzer, Miner, PortHost, Resource, ResourceStore,
+            SolarPanel, Station,
         },
         tile::{SurfaceTile, TileMap, TileSets},
     },
@@ -58,6 +59,7 @@ use crate::{
         maneuver::ManeuverModal,
         sim_speed::SimSpeed,
         starbox::Starbox,
+        transfer::{TransferResult, TransferUi},
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
@@ -132,6 +134,7 @@ pub struct Gameplay {
     gui_bindings: Vec<Binding>,
     fabricator_ui: FabricatorUi,
     maneuver_ui: ManeuverModal,
+    transfer_ui: TransferUi,
     game_over_ui: GameOverUi,
 
     // RCs for GUI
@@ -172,7 +175,8 @@ pub enum CommandMessages {
     CancelCommand { craft: Entity },
     Undock { entity: Entity },
     SelectEntity { entity: Entity },
-    OpenManeuver,
+    OpenManeuver, // TODO: Should store the entity rather than relying on selected
+    OpenTransfer, // TODO: Should store the entity rather than relying on selected
 }
 
 enum DockedView {
@@ -330,6 +334,7 @@ impl Scene for Gameplay {
     fn update(&mut self, app: &App) {
         let modal_open = self.fabricator_ui.is_shown()
             || self.maneuver_ui.is_shown()
+            || self.transfer_ui.is_shown()
             || self.game_over_ui.is_shown();
 
         if self.game_over_ui.update(app) {
@@ -355,14 +360,26 @@ impl Scene for Gameplay {
             factory.reserved_port = reserved_port;
         }
 
-        if let Some(result) = self
-            .maneuver_ui
-            .update(self.current_et.get(), &self.world, app)
-        {
+        let now = self.current_et.get();
+
+        if let Some(result) = self.maneuver_ui.update(now, &self.world, app) {
             if let Some(selected) = self.selection.selected_entity() {
                 let command = result.into_command();
                 self.world.get::<&mut Craft>(selected).unwrap().command = Some(command);
             }
+        }
+
+        if let Some(TransferResult { from, to }) = self.transfer_ui.update(now, &self.world, app) {
+            self.commit_station();
+            transfer_resource(
+                &self.world,
+                from.host,
+                to.host,
+                from.resource,
+                f32::MAX,
+                now,
+            );
+            self.transfer_ui.rebuild(now, &self.world, app);
         }
 
         if !modal_open {
@@ -436,6 +453,16 @@ impl Scene for Gameplay {
                     CommandMessages::OpenManeuver => {
                         if let Some(selected) = self.selection.selected_entity() {
                             self.maneuver_ui.show(
+                                selected,
+                                self.current_et.get(),
+                                &self.world,
+                                app,
+                            );
+                        }
+                    }
+                    CommandMessages::OpenTransfer => {
+                        if let Some(selected) = self.selection.selected_entity() {
+                            self.transfer_ui.show(
                                 selected,
                                 self.current_et.get(),
                                 &self.world,
@@ -675,6 +702,7 @@ impl Scene for Gameplay {
         self.turn_gui.render(app);
         self.fabricator_ui.render(app);
         self.maneuver_ui.render(app);
+        self.transfer_ui.render(app);
         self.game_over_ui.render(app);
     }
 }
@@ -1155,6 +1183,7 @@ impl Gameplay {
             turn_gui: Anchor::new(Box::new(container![]), AnchorPoint::BottomLeft),
             fabricator_ui: FabricatorUi::new(),
             maneuver_ui: ManeuverModal::new(app),
+            transfer_ui: TransferUi::new(),
             game_over_ui: GameOverUi::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
@@ -1828,6 +1857,7 @@ impl Gameplay {
 
     fn module_list(&self, station: Entity, app: &App) -> Section {
         let mut out = Section::default();
+        const WIDTH: f32 = 280.0;
 
         let font_small_bold = app
             .renderer
@@ -1836,6 +1866,17 @@ impl Gameplay {
 
         let total = self.world.get::<&PortHost>(station).unwrap().ports;
         let used = total - free_ports(&self.world, station);
+
+        let number_docked = dock_tree(&self.world, station).len();
+
+        if number_docked > 1 {
+            out.push(
+                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Transfer")
+                    .use_style(&STYLE)
+                    .bound_active(self.controls_enabled.clone())
+                    .on_click(CommandMessages::OpenTransfer),
+            );
+        }
 
         out.push(Label::new(format!("PORTS ({used}/{total})")).font(font_small_bold, app));
 

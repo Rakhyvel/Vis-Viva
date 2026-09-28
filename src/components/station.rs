@@ -6,7 +6,12 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{body::Body, body::Parent, craft::Landed, factory::Factory, parts::PartRegistry},
+    components::{
+        body::{Body, Parent},
+        craft::{Craft, Landed},
+        factory::Factory,
+        parts::PartRegistry,
+    },
 };
 
 pub struct Station {
@@ -378,6 +383,56 @@ pub fn free_ports(world: &World, host: Entity) -> u32 {
     let total = world.get::<&PortHost>(host).map_or(0, |p| p.ports);
     let used = used_ports(world, host);
     total.saturating_sub((0..total).filter(|i| used.contains(i)).count() as u32)
+}
+
+/// Follow the docking tree up to the docking root
+pub fn dock_root(world: &World, mut e: Entity) -> Entity {
+    while let Ok(host) = world.get::<&Docking>(e).map(|d| d.host) {
+        e = host
+    }
+    e
+}
+
+/// Every craft (no modules) connected to `e` through docking, including `e` itself
+pub fn dock_tree(world: &World, e: Entity) -> Vec<Entity> {
+    let root = dock_root(world, e);
+    world
+        .query::<&Craft>()
+        .iter()
+        .map(|(c, _)| c)
+        .filter(|c| dock_root(world, *c) == root)
+        .collect()
+}
+
+/// Move up to `amount` of resouce `r`, limited by what `from` has and what `to` can hold.
+/// Returns how much actually moved
+pub fn transfer_resource(
+    world: &World,
+    from: Entity,
+    to: Entity,
+    r: Resource,
+    amount: f32,
+    now: EphemerisTime,
+) -> f32 {
+    let (have, _) = station_resource_totals(world, from, r, now);
+    let (stored, capacity) = station_resource_totals(world, to, r, now);
+    let moved = amount.min(have).min(capacity - stored).max(0.0);
+
+    take_resource(world, from, r, moved, now);
+    add_resource(world, to, r, moved, now);
+    moved
+}
+
+pub fn transferable(
+    world: &World,
+    from: Entity,
+    to: Entity,
+    r: Resource,
+    now: EphemerisTime,
+) -> f32 {
+    let (have, _) = station_resource_totals(world, from, r, now);
+    let (stored, capacity) = station_resource_totals(world, to, r, now);
+    have.min(have).min(capacity - stored).max(0.0)
 }
 
 pub struct SolarPanel {

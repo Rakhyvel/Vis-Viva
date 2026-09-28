@@ -91,9 +91,10 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] get rid of the stage/payload distinction, just have parts and craft and modules
     - [ ] docked craft contribute mass to the host's burns
   - [ ] resource transfer
-    - [ ] Dray and Pico have actual H2 and O2 tanks, taken from by engines
-    - [ ] resource transfer modal
-      - [ ] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
+    - [x] Dray and Pico have actual H2 and O2 tanks
+    - [x] Engines use H2 and O2 from the tanks
+    - [x] resource transfer modal
+      - [x] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
     - [x] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Mining && ISRU
   - [x] Ilmetite smelting (just give generic "metal" for MVP)
