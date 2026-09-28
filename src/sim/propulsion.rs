@@ -3,8 +3,10 @@ use hecs::{Entity, World};
 
 use crate::{
     astro::{epoch::EphemerisTime, units::LITTLE_G},
-    components::craft::Command,
-    sim::resources::{station_resource_totals, stored_mass_kg, take_resource, Resource},
+    sim::{
+        mission::Command,
+        resources::{station_resource_totals, stored_mass_kg, take_resource, Resource},
+    },
 };
 
 const OF_RATIO: f32 = 5.5;

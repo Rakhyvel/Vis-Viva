@@ -4,7 +4,7 @@ use hecs::Entity;
 
 use crate::{
     astro::{epoch::EphemerisTime, state::State},
-    components::craft::BurnPurpose,
+    sim::mission::BurnPurpose,
 };
 
 #[derive(Clone, Copy)]

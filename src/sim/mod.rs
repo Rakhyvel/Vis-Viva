@@ -6,6 +6,7 @@ pub mod bodies;
 pub mod docking;
 pub mod hierarchy;
 pub mod industry;
+pub mod mission;
 pub mod parts;
 pub mod propulsion;
 pub mod resources;

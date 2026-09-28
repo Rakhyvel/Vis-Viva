@@ -10,8 +10,8 @@ use nalgebra_glm::{vec2, vec4, Vec2, Vec4};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::craft::BurnPurpose,
     scenes::events::Event,
+    sim::mission::BurnPurpose,
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
 };
 

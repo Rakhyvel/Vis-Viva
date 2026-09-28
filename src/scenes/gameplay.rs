@@ -34,7 +34,7 @@ use crate::{
         },
     },
     components::{
-        craft::{replace_line_path, spawn_craft, AssociatedEntity, Command, ScheduledBurn},
+        craft::{replace_line_path, spawn_craft, AssociatedEntity},
         station::Station,
     },
     container,
@@ -56,12 +56,13 @@ use crate::{
             Landed, Named, Parent,
         },
         industry::{commit_pending_builds, projected_completion, Factory},
+        mission::{Command, ScheduledBurn},
         parts::{id_hash, ModuleSpec, PartDef, PartInventory, PartRegistry},
         propulsion::{apply_burn, craft_dv, Craft},
         resources::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
-            station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
-            transfer_resource, Electrolyzer, Miner, Resource, ResourceStore, SolarPanel,
+            station_r_au, station_resource_amount_flow, station_resource_totals, transfer_resource,
+            Electrolyzer, Miner, Resource, ResourceStore, SolarPanel,
         },
     },
     ui::{
@@ -364,9 +365,8 @@ impl Scene for Gameplay {
 
         let now = self.current_et.get();
 
-        if let Some(result) = self.maneuver_ui.update(now, &self.world, app) {
+        if let Some(command) = self.maneuver_ui.update(now, &self.world, app) {
             if let Some(selected) = self.selection.selected_entity() {
-                let command = result.into_command();
                 self.world.get::<&mut Craft>(selected).unwrap().command = Some(command);
             }
         }
