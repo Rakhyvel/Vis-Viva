@@ -6,6 +6,7 @@ pub mod bodies;
 pub mod docking;
 pub mod hierarchy;
 pub mod industry;
+pub mod parts;
 pub mod resources;
 
 pub struct Sim {

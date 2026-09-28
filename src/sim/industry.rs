@@ -5,13 +5,10 @@ use hecs::{Entity, World};
 ///! Fabrication
 use crate::{
     astro::epoch::EphemerisTime,
-    components::{
-        inventory::PartInventory,
-        parts::{PartCost, PartRegistry},
-    },
     sim::{
         docking::{free_ports, Docking, PortHost},
         hierarchy::Parent,
+        parts::{PartCost, PartInventory, PartRegistry},
         resources::{commit_station, station_resource_totals, take_resource, Resource},
     },
 };

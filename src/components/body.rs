@@ -12,10 +12,11 @@ use nalgebra_glm::{vec3, DVec3};
 
 use crate::{
     astro::state::State,
-    components::{craft::AssociatedEntity, inventory::PartInventory},
+    components::craft::AssociatedEntity,
     sim::{
         bodies::{Body, Category, TileMap, TileSets},
         hierarchy::{Named, Parent},
+        parts::PartInventory,
     },
 };
 

@@ -7,14 +7,11 @@ use nalgebra_glm::{vec2, Vec2};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::{
-        inventory::PartInventory,
-        parts::{PartDef, PartRegistry},
-    },
     container,
     sim::{
         docking::Docking,
         industry::{cost_status, CostKind, CostLine, Factory},
+        parts::{PartDef, PartInventory, PartRegistry},
         resources::{station_resource_totals, Resource},
     },
     ui::{

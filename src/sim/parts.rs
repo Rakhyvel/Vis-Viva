@@ -1,3 +1,4 @@
+///! Parts catalog
 use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
@@ -89,6 +90,7 @@ pub enum ModuleSpec {
         power_watts: f32,
         kg_per_s: f32,
     },
+    // TODO: SolarPanel, Factory, Electrolyzer
 }
 
 impl PartRegistry {
@@ -203,3 +205,30 @@ impl PartDef {
         id_hash(&self.id)
     }
 }
+
+pub struct PartInventory {
+    /// Maps part IDs to how many of them there are
+    /// TODO: A strong PartId type
+    pub parts: HashMap<u64, u32>,
+}
+
+impl PartInventory {
+    pub fn add(&mut self, part_id: u64, count: u32) {
+        *self.parts.entry(part_id).or_insert(0) += count;
+    }
+
+    pub fn quantity(&self, part_id: u64) -> u32 {
+        self.parts.get(&part_id).copied().unwrap_or(0)
+    }
+
+    pub fn take(&mut self, part_id: u64) -> Result<(), String> {
+        let current = self.parts.get(&part_id).copied().unwrap_or(0);
+        if current == 0 {
+            return Err(format!("not enough {}", part_id));
+        }
+        *self.parts.entry(part_id).or_insert(0) -= 1;
+        Ok(())
+    }
+}
+
+// TODO: spawn_modules(world, host, &[ModuleSpec], now)
