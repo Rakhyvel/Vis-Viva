@@ -37,7 +37,7 @@ impl Porkchop {
 
         let cells: Vec<Option<Cell>> = (0..tof_steps)
             .flat_map(|j| (0..depart_steps).map(move |i| (i, j)))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>() // TODO: A range here might be simpler
             .into_par_iter()
             .map(|(i, j)| {
                 let tof = Self::tof_for_row(tof_min, tof_max, tof_steps, j);

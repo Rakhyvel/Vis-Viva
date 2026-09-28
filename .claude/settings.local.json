@@ -6,7 +6,8 @@
       "Read(//c/Users/Joseph/git/apricot/**)",
       "Bash(ls ~/git/apricot ~/git/erovra3 2>&1 | head -60)",
       "Bash(xargs wc -l)",
-      "Bash(sort -k2)"
+      "Bash(sort -k2)",
+      "Bash(cd /c/Users/Joseph/git/Claude-Code-Game-Studios && cat CLAUDE.md project.yaml && sed -n 1,200p README.md && find . -path ./.git -prune -o -type f -print | sed 's|/[^/]*$||' | sort | uniq -c | sort -rn | head -40)"
     ]
   }
 }

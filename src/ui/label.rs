@@ -4,7 +4,7 @@ use crate::ui::{msg::MsgQueue, widget::Widget};
 use apricot::{app::App, font::FontId, rectangle::Rectangle};
 use nalgebra_glm::{vec4, Vec2, Vec4};
 
-/// A button with text
+/// A bit of text
 pub struct Label {
     /// The rectangle defining the button's position and size
     rect: Rectangle,

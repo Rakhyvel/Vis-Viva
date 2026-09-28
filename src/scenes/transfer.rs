@@ -1,6 +1,6 @@
-use apricot::{app::App, rectangle::Rectangle};
+use apricot::app::App;
 use hecs::{Entity, World};
-use nalgebra_glm::{vec2, vec4, Vec2};
+use nalgebra_glm::{vec2, Vec2};
 
 use crate::{
     astro::epoch::EphemerisTime,
@@ -29,7 +29,7 @@ pub struct Pool {
 }
 
 #[derive(Clone, Debug)]
-pub enum TransferMessages {
+enum TransferMessages {
     SelectFrom(Pool),
     SelectTo(Pool),
     Transfer,
@@ -112,7 +112,6 @@ impl TransferUi {
 
     pub fn rebuild(&mut self, now: EphemerisTime, world: &World, app: &App) {
         let Some(craft) = self.craft else { return };
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
         let font_big = app.renderer.get_font_id_from_name("font-big").unwrap();
         let font_small_bold = app
             .renderer
@@ -148,7 +147,6 @@ impl TransferUi {
                     stored > 0.0,
                     TransferMessages::SelectFrom(pool),
                     COL_W,
-                    app,
                 ));
 
                 if self.from.is_some_and(|f| f.resource == r && f.host != host) {
@@ -160,7 +158,6 @@ impl TransferUi {
                         stored < cap,
                         TransferMessages::SelectTo(pool),
                         COL_W,
-                        app,
                     ))
                 }
             }
@@ -251,7 +248,6 @@ fn pool_card(
     active: bool,
     msg: TransferMessages,
     width: f32,
-    app: &App,
 ) -> Box<dyn Widget<TransferMessages>> {
     let (unit, _) = pool.resource.presentation_units();
     let (scale, _) = pool.resource.presentation_scalars();

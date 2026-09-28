@@ -9,6 +9,7 @@ use crate::astro::units::{
 /// Represents a duration in microseconds. Should allow for ~292,000 years future and past.
 ///
 /// When used as a time point, duration since the save-start epoch.
+/// TODO: Separate Instant and Duration types
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 pub struct EphemerisTime(i64);
 
@@ -83,12 +84,11 @@ impl EphemerisTime {
         )
     }
 
-    pub fn short_month_name(&self) -> String {
+    pub fn short_month_name(&self) -> &'static str {
         let dt = self.as_datetime();
         [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
         ][dt.month() as usize - 1]
-            .to_string()
     }
 
     pub fn day_of_month(&self) -> String {

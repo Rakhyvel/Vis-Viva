@@ -57,3 +57,13 @@ capacity = 1000.0
 kind = "miner"
 kg_per_s = 0.003
 power_watts = 5.0
+
+
+[[parts]]
+id = "station_core"
+name = "Station Core"
+desc = "Core of the station."
+dry_mass_kg = 676767676767.0
+energy_kwh = 100000.0
+fabricatable = false
+ports = 8

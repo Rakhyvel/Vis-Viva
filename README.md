@@ -95,6 +95,92 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
       - [x] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
     - [x] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Post-MVP cleanup
+  - [ ] split up big stuff:
+    - [ ] split `state.rs` so it returns DVec3 samples and leaves f32 conversion to rendering
+    - [ ] files: gameplay.rs, maneuver.rs, and station.rs
+      - gameplay assets, new game, rendering, camera, picking, input, events, jobs, orbits, UI panel building
+      - maneuver: modal state, view, planning, coloring
+      - station: ledger, flows and modules, docking, Resource
+      - sim
+        - hierarchy (positions and ancestry): Parent, Name (form SceneObject.name), Landed, orbit_system, propagate, landed_system, docked_position_system, get_ancestor, ancestor_chain, set_orbit
+        - bodies (celestial bodies): Body, Category, gaseous, mass, habitable, is_giant, TileMap, SurfaceTile, TileSets
+        - docking (ports and the dock tree): Docking, PortHost (drop dock_gen), allocate_ports, next_free_port, free_ports, dock_root, dock_tree, dock(), undock(), docking-range predicate from get_craft_colocated
+        - resources (stored quantities): Resource, ResourceStore, stores_of, totals, store_amount, commit, add/take (clamped), transferable/transfer, stored_mass, next_limits, SolarPanel, Electrolyzer, Miner, station_net_watts, resource_flow, one "is running" rule, set_enabled(world, module, bool, now) that commits before changing a rate
+        - industry (fabrication): Factory, FactoryJob (reshaped as a state enum), toggle, queue, cancel, CostKind, CostLine, cost_status, reserved-cost summing (merges station_reserved and pending_deduction), projected_completion, commit_pending_builds, complete_due_jobs, deliver_craft (domain half)
+        - parts (parts catalog): PardId, PartRegistry (parse + load), PartDef, PartCost, ModuleSpec (+ SolarPanel/Factory/Electrolyzer), PartInventory, spawn_modules(world, host, &[ModuleSpec], now)
+        - propulsion (rocket equation): Craft, usuable_propellant, apply_burn, delta_v, one OF_RATIO
+        - mission (commands) Command (absorbs ManeuverResult's helpers and Dock{depart_et}), ScheduleBurn, BurnPurpose, MissionState enum, title_parts
+        - events (event queue): Event (with Burn{craft, burn: ScheduleBurn}), EventQueue (private map, peek_next, iter), schedule(command), apply(event) -> Vec<SimEffect>
+        - life_support (crew): Station{crew}, consumption constants, crew_loss(), later the timers
+        - clock (time contorl): Clock {now, paused, run_until, speed} (no Rc), SimSpeed rates, next_stop(&Sim) combining the next event, resevoir limit and job completion
+        - mod (facade): Sim{world, clock, events, parts}, step(dt) -> Vec<SimEffect>, apply_command(), SimEffect {OrbitChanged(e), CraftDelivered(e), FocusEntity(e), CrewLost(e, Resource)}
+      - procgen
+        - new_game: World generation and starter station
+        - solar_system
+        - lexicon
+      - hud
+        - format: Resource::presentation_units/scalars, long_name/short_name
+        - maneuver: ManeuverKind::available, get_*_destinations, get_craft_colocated, compute_porkchop, plan_from_selection, DOCKING_RANGE/SPEED
+        - timeline: Timeline, TimelineMark, MarkKind, marks_digest
+        - widgets: PorkchopPicker, PlotAxes, stat_row
+      - render
+        - assets: Asset registration (shaders, meshes, textures, fonts), returning typed Assets {fonts, meshes, textures}
+        - meshes: icosphere.rs, polygon.rs
+        - starbox: Starbox
+        - scene: attache_model, BvhNode (from SceneObject.bvh_node_id), spawn_craft, sync_models, Body::get_texture_id, render half of spawn_body
+        - orbit_lines: AssociatedEntity, replace_line_path, line_path_system
+        - camera: CameraRig (phi, theta, distance, control, easing, transition animation)
+        - picking: world_to_screen, apparent_radius, occlusion, hover and tile picks, tile outlines, dots, reticles
+      - ui
+        - text: wrap()
+      - game
+        - mod: Gameplay { sim: Sim, view: View, hud: Hud }, update does input -> HUD messages -> sim commands -> step -> apply effects -> view/HUD sync
+        - selection: SelectionState, fix to accept any entity, and don't use it to find the sun
+        - command: CommandMessages enum and its dispatcher. OpenManeuver/OpenTransfer carry the entity
+        - panels: Section, the rebuild key and the builders
+        - maneuver/{mod, view, planner, porkchop_picker}
+        - fabricator
+        - transfer
+        - game_over
+        - format: countdown, resource amount and rate formatting, distances
+    - [ ] functions: Gameplay::new(), schedule_events(), Gameplay::update(), ManeuverModal::rebuild(), ManeuverModal::plan_from_selection
+      - Gameplay::new() does renderer, mesh, texture, font, world gen, station spawning
+      - Gameplay::update does modal results, dispatch command messages, dispatch turn messages, advance clock and pops events, checks for game over, refreshes widget state, runs fixed systems
+    - [ ] eliminate unwrap()s
+    - [ ] eliminate #[allow(...)]s
+      - spawn_factory
+      - has_habitable
+      - !fixed_size
+      - MassCategory.category
+      - Style.warning
+      - aim_for_periapsis.target_body_radius
+    - [ ] add more tests to the astro and resource code
+      - resource ledger stuff
+      - docking ports, dock_tree
+      - FactoryJob energy math, cost_status
+      - parts loading and validation (need a parse(&str) -> Result first)
+      - Astro planners (energy conservation, round trips)
+    - [ ] consolidate (after adding tests)
+      - Remove ManeuverResult, use Command
+      - Event::Burn duplicates ScheduledBurn, make it a field of Event::Burn
+      - "Put a craft on an orbit" dedup, one domain operation plus one render-sync-step
+      - "DONE" / "T- {dur}" => format::countdown(now, t)
+      - transfer_resource / transferable
+      - station_reserved / pending_deduction
+      - build time = energy / power (projected_completion, fabricator_section)
+      - electrolyzer_section / miner_section => toggle_module_section
+      - spawning a BVH and model and SceneObject => render::attach_model(world, e, mesh, texture, scale)
+      - "is running" (Electrolyzer::is_running vs electrolyzer_kg_per_s, Miner::is_running vs miner_kg_per_s, station_net_watts checks el.enabled && running)
+      - FontIDs into Style?!
+      - departure.rs and porkchop.rs
+    - [ ] Don't make current_et an Rc
+    - [ ] strong types for at least Mu, DeltaV, PartId (with a stable hash)
+    - [ ] Replace `Craft::command`/`Craft::scheduled` with tri-state `Idle | Queued(Command) | Scheduled(Command)`
+    - [ ] pin dependency versions
+    - [ ] Make OpenManeuver and OpenTransfer not rely on the selection
+    - [ ] enable clippy!!!
+  - [ ] "kernel boot screen" type loading screen, TUI-esque main menu, like you're interfacing with the "Autonomous Colony Management System" that the player is for the game
+    - A skippable intro scene when you start a new game that tells you that you're the AI controlling the station, the backstory, what the goals are
   - [ ] _start_ crew death on resource depletion, rather than immediate death, with big red text timer banner
     - [ ] suffocation takes 3 mins
     - [ ] dehydration takes 3 days
@@ -105,7 +191,18 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)
     - [ ] Need some way to vent water of a Dray that's too heavy
   - [ ] disable miner if no power
-  - [ ] make buttons/sliders pause automatically
+  - [ ] spawn station from toml
+  - [ ] small UI fixes
+    - [ ] make buttons/sliders pause automatically
+    - [ ] space to play/pause, < > to speed down/up, esc to close top modal
+    - [ ] show `No upcoming events` in event list if there's no upcoming events
+    - [ ] show `unmeasured` in italic instead of `-` for bodies
+    - [ ] preserve scroll state
+    - [ ] UI should consume clicks
+    - [ ] Scroll bars
+    - [ ] text size based sizes, rather than raw pixels
+    - [ ] collapsible sections, with caret
+    - [ ] dont show porkchop plot until its needed
 - [ ] Science
   - [ ] Start off with a full Pico docked
   - [ ] measurements
@@ -174,6 +271,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
   - [ ] ability to choose your landing site from what's available underneathe you
   - [ ] surface outpots on tiles (give them solar panels for now)
   - [ ] mining drill bit durability
+  - [ ] extraction worsens the availability over time, but the abundance largely stays the same
   - Rules:
     - Every resource should have a useful role somewhere in the system, and preferably a secondary use that competes with its first.
     - The byproducts of processes are always useful.
@@ -255,12 +353,15 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - hydolox fuel cell: H2 + O2 => (energy) + H2O
     - methalox fuel cell: CH4 + 2 O2 => (energy) + C02 + 2 H2O
     - nuclear: U234 => (energy) (heavy but materially efficient)
+  - [ ] automation
+    - [ ] _maybe_ a simple scripting language
   - [ ] crew respiration produces small amounts of CO2 that needs to be scrubbed. Later on can be captured.
   - [ ] crew capacity, determine how many simultaneous things can go on in the station.
   - [ ] radiation as a hazard to shield against
     - crew die if they're exposed to radiation, shielding adds mass, mass affects delta V
   - [ ] craft need parachute/landing gear in order to land
   - [ ] food decay
+  - [ ] gotta be able to breed (or clone?) crew
   - [ ] win if you beam a message back to earth, huge amount of power, megaproject
 - [ ] Misc polish
   - [ ] planetary atmospheres, clouds, tile detail
@@ -276,6 +377,4 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - maybe like a little tooltip by the target craft/body that says "RENDEZVOUS: 17 days"
   - [ ] show the planned trajectory for crafts with a mission, different color, lighter
   - [x] show how many stages we have in inventory in the factory
-  - [ ] "kernel boot screen" type loading screen, TUI-esque main menu, like you're interfacing with the "Autonomous Colony Management System" that the player is for the game
-    - A skippable intro scene when you start a new game that tells you that you're the AI controlling the station, the backstory, what the goals are
   - [ ] (purely code) strongly typed units. Dont gotta go full mp-units crazy, and it probably wouldn't work too well with nalgebra... but yknow

@@ -61,6 +61,7 @@ impl State {
     /// Returns the ephemeris at some `t` given some mu
     /// TODO:
     /// * Tests! That we preserve orbital energy and angular momentum
+    /// * Splitting into initial guess, newton iteration with a fallback, lagrange coefficients would make it easier to test
     /// * bracket/bisection
     pub fn propagate(&self, t: EphemerisTime, mu: f64) -> Result<State, String> {
         let dt = (t - self.t).as_years();

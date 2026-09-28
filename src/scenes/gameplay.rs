@@ -1036,7 +1036,7 @@ impl Gameplay {
                 capacity: 1.8e9,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1045,7 +1045,7 @@ impl Gameplay {
                 host_port: 1,
             },
             SolarPanel { rated_w: 100_000.0 },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1059,7 +1059,7 @@ impl Gameplay {
                 capacity: 3800.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1073,7 +1073,7 @@ impl Gameplay {
                 capacity: 600.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1087,7 +1087,7 @@ impl Gameplay {
                 capacity: 100.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1102,7 +1102,7 @@ impl Gameplay {
                 enabled: false,
                 reserved_port: None,
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -1115,7 +1115,7 @@ impl Gameplay {
                 power_watts: 5_000.0,
                 joules_per_kg_water: 2.52e7,
             },
-            Parent { id: station },
+            Parent { id: station_parent },
         ));
         crafts.push(station);
 
@@ -1265,7 +1265,7 @@ impl Gameplay {
         }
     }
 
-    fn rebuild_gui(&mut self, app: &App) -> (Anchor<CommandMessages>, Vec<Binding>) {
+    fn rebuild_gui(&self, app: &App) -> (Anchor<CommandMessages>, Vec<Binding>) {
         let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
         let mut bindings = vec![];
         let selected = self.selection.selected_entity();
@@ -1300,7 +1300,7 @@ impl Gameplay {
         (anchor, bindings)
     }
 
-    fn rebuild_turn_gui(&mut self, app: &App) -> Anchor<TurnMessages> {
+    fn rebuild_turn_gui(&self, app: &App) -> Anchor<TurnMessages> {
         let mut turn_widgets: Vec<Box<dyn Widget<TurnMessages>>> = vec![];
         turn_widgets.extend(self.build_footer_widgets(app));
         const MARGIN: f32 = 16.0;
@@ -1334,8 +1334,8 @@ impl Gameplay {
         let rows = self
             .pause_reasons
             .iter()
-            .map(|m| self.event_row(m, true, app))
-            .chain(upcoming.iter().map(|m| self.event_row(m, false, app)))
+            .map(|m| Self::event_row(m, true, app))
+            .chain(upcoming.iter().map(|m| Self::event_row(m, false, app)))
             .collect();
 
         let turn_controls = Container::new(vec![
@@ -1403,12 +1403,7 @@ impl Gameplay {
         ]
     }
 
-    fn event_row(
-        &self,
-        mark: &TimelineMark,
-        accented: bool,
-        app: &App,
-    ) -> Box<dyn Widget<TurnMessages>> {
+    fn event_row(mark: &TimelineMark, accented: bool, app: &App) -> Box<dyn Widget<TurnMessages>> {
         let font = app
             .renderer
             .get_font_id_from_name("font-small-bold")
@@ -1519,8 +1514,7 @@ impl Gameplay {
             out.merge(self.mission_section(selected, app));
         }
 
-        // Stages from bottom to top
-        out.push(Label::new("STAGES").font(font_small_bold, app));
+        out.push(Label::new("ENGINE").font(font_small_bold, app));
 
         out.push(
             Label::bound(craft_dv_text.clone())
@@ -1775,7 +1769,7 @@ impl Gameplay {
             .iter()
             .filter(|(_, (p, _))| p.id == selected)
             .map(|(e, _)| e)
-            .collect();
+            .collect(); // TODO: We don't have to collect just to check for is_emtpy, do we?
 
         if !children.is_empty() {
             let has_parent = self.world.get::<&Parent>(selected).is_ok();
@@ -1799,7 +1793,7 @@ impl Gameplay {
             .iter()
             .filter(|(_, (p, _))| p.id == selected)
             .map(|(e, _)| e)
-            .collect();
+            .collect(); // TODO: We don't have to collect just to check for is_emtpy, do we?
 
         if !craft.is_empty() {
             out.push(HRule::new(STYLE.border, 1.0, WIDTH));
@@ -1907,7 +1901,7 @@ impl Gameplay {
             .map(|(e, _)| e)
         {
             if self.world.get::<&SolarPanel>(module).is_ok() {
-                out.merge(self.solar_panel_section(module, app));
+                out.merge(Self::solar_panel_section(module, app));
             } else if self.world.get::<&ResourceStore>(module).is_ok() {
                 out.merge(self.resource_store_section(module, app));
             } else if self.world.get::<&Factory>(module).is_ok() {
@@ -1953,7 +1947,7 @@ impl Gameplay {
         out
     }
 
-    fn solar_panel_section(&self, module: Entity, app: &App) -> Section {
+    fn solar_panel_section(module: Entity, app: &App) -> Section {
         let font_small_bold = app
             .renderer
             .get_font_id_from_name("font-small-bold")
@@ -2093,7 +2087,7 @@ impl Gameplay {
         let power_draw = Rc::new(RefCell::new(String::new()));
         let now = self.current_et.get();
 
-        out.push(Label::new(String::from("FABRICATOR")).font(font_small_bold, app));
+        out.push(Label::new("FABRICATOR").font(font_small_bold, app));
         out.push(Label::bound(power_draw.clone()).font(font, app));
 
         if let Some(job) = &factory.current_job {
@@ -2225,7 +2219,7 @@ impl Gameplay {
         let text = Rc::new(RefCell::new(String::new()));
         let enabled = Rc::new(Cell::new(false));
 
-        out.push(Label::new(String::from("ELECTROLYZER")).font(font_small_bold, app));
+        out.push(Label::new("ELECTROLYZER").font(font_small_bold, app));
         out.push(
             Toggle::new("Enabled:")
                 .bind(enabled.clone())
@@ -2266,7 +2260,7 @@ impl Gameplay {
         let text = Rc::new(RefCell::new(String::new()));
         let enabled = Rc::new(Cell::new(false));
 
-        out.push(Label::new(String::from("MINER")).font(font_small_bold, app));
+        out.push(Label::new("MINER").font(font_small_bold, app));
         out.push(
             Toggle::new("Enabled:")
                 .bind(enabled.clone())
@@ -3081,7 +3075,7 @@ impl Gameplay {
 
         // Kick off from roots
         for root in roots {
-            let mu = { self.world.get::<&mut Body>(root).unwrap().mu };
+            let mu = self.world.get::<&Body>(root).unwrap().mu;
             let root_pos = vec3(0.0, 0.0, 0.0);
             self.propagate(&children, root, root_pos, mu, et);
         }
@@ -3661,7 +3655,7 @@ impl Gameplay {
         ))
     }
 
-    fn render_dots(&mut self, app: &App) {
+    fn render_dots(&self, app: &App) {
         app.renderer.set_color(vec4(1.0, 1.0, 1.0, 1.0));
 
         for (entity, (world_pos, _model)) in self

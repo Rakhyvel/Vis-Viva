@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub enum GameOverMessages {
+enum GameOverMessages {
     Quit,
 }
 

@@ -37,12 +37,12 @@ impl SimSpeed {
         Self::RATES[self.idx].0
     }
 
-    pub fn get_name(&self) -> &'static str {
+    fn get_name(&self) -> &'static str {
         Self::RATES[self.idx].1
     }
 
     pub fn speed_up(&mut self) {
-        self.idx = (self.idx + 1).min(Self::RATES.len());
+        self.idx = (self.idx + 1).min(Self::RATES.len() - 1);
         self.can_slow_down.set(true);
         self.can_speed_up.set(self.idx < Self::RATES.len() - 1);
         *self.sim_speed_str.borrow_mut() = String::from(self.get_name())

@@ -18,7 +18,7 @@ struct PartFile {
 /// On-wire format for a part
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PartRaw {
+struct PartRaw {
     id: String,
     name: String,
     desc: String,

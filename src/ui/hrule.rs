@@ -4,7 +4,7 @@ use nalgebra_glm::{Vec2, Vec4};
 use crate::ui::{msg::MsgQueue, widget::Widget};
 
 pub struct HRule {
-    pub color: Vec4,
+    color: Vec4,
     rect: Rectangle,
 }
 

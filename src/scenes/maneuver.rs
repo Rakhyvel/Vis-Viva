@@ -489,7 +489,7 @@ impl ManeuverModal {
         self.refresh_chop(craft, current_et, world, app, false);
     }
 
-    fn sync_labels(&mut self, world: &World) {
+    fn sync_labels(&self, world: &World) {
         let dv = self
             .computed_plan
             .as_ref()
@@ -572,8 +572,8 @@ impl ManeuverModal {
             is_orbiting: world.get::<&State>(craft).is_ok(),
             parent_is_solid: !world.get::<&Body>(parent).unwrap().gaseous(),
             can_escape: world.get::<&Parent>(parent).is_ok(),
-            bodies: self.get_body_destinations(craft, world),
-            crafts: self.get_craft_destinations(craft, world),
+            bodies: Self::get_body_destinations(craft, world),
+            crafts: Self::get_craft_destinations(craft, world),
             co_located: self.get_craft_colocated(craft, current_et, world),
         };
 
@@ -762,7 +762,7 @@ impl ManeuverModal {
         self.modal.reposition(app);
     }
 
-    fn get_body_destinations(&self, craft: Entity, world: &World) -> Vec<(Entity, String)> {
+    fn get_body_destinations(craft: Entity, world: &World) -> Vec<(Entity, String)> {
         let parent = world
             .get::<&Parent>(craft)
             .expect("craft should have parent")
@@ -775,7 +775,7 @@ impl ManeuverModal {
             .collect()
     }
 
-    fn get_craft_destinations(&self, craft: Entity, world: &World) -> Vec<(Entity, String)> {
+    fn get_craft_destinations(craft: Entity, world: &World) -> Vec<(Entity, String)> {
         let parent = world
             .get::<&Parent>(craft)
             .expect("craft should have parent")
