@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use hecs::{Entity, World};
 
+///! Fabrication
 use crate::{
     astro::epoch::EphemerisTime,
     components::{
@@ -9,8 +10,9 @@ use crate::{
         parts::{PartCost, PartRegistry},
     },
     sim::{
-        docking::{free_ports, Docking},
-        resources::{station_resource_totals, Resource},
+        docking::{free_ports, Docking, PortHost},
+        hierarchy::Parent,
+        resources::{commit_station, station_resource_totals, take_resource, Resource},
     },
 };
 
@@ -128,6 +130,31 @@ pub fn cost_status(
     line
 }
 
+// TODO: Merge station_reserved
+pub fn pending_deduction(
+    world: &World,
+    station: Entity,
+    registry: &PartRegistry,
+    r: Resource,
+) -> f32 {
+    let mut sum = 0.0;
+    for (_, (docking, f)) in world.query::<(&Docking, &Factory)>().iter() {
+        if docking.host != station {
+            continue;
+        }
+        let Some(id) = f.pending_job else { continue };
+        let Some(def) = registry.get(id) else {
+            continue;
+        };
+        for (res, amt) in &def.cost.resources {
+            if *res == r {
+                sum += *amt
+            }
+        }
+    }
+    sum
+}
+
 pub fn station_reserved(
     world: &World,
     station: Entity,
@@ -166,3 +193,46 @@ pub fn projected_completion(
     let secs = def.cost.energy_joules / f.power_watts;
     Some(now + EphemerisTime::from_secs(secs as f64))
 }
+
+pub fn commit_pending_builds(world: &World, parts: &PartRegistry, now: EphemerisTime) {
+    // Collect the factories
+    let pending: Vec<(Entity, u64)> = world
+        .query::<&Factory>()
+        .iter()
+        .filter_map(|(e, f)| f.pending_job.map(|id| (e, id)))
+        .collect();
+
+    for (fab, part_id) in pending {
+        let station = world.get::<&Parent>(fab).unwrap().id;
+        let cost = &parts.get(part_id).unwrap().cost;
+
+        // Commit the parts subtraction
+        {
+            let mut inv = world.get::<&mut PartInventory>(station).unwrap();
+            for (id, n) in &cost.parts {
+                for _ in 0..*n {
+                    inv.take(*id).unwrap();
+                }
+            }
+        }
+
+        // Commit the resources subtraction
+        for (r, amount) in &cost.resources {
+            take_resource(world, station, *r, *amount, now);
+        }
+
+        // Commit at the old rate, before the job changes it.
+        commit_station(world, station, now);
+
+        {
+            let mut f = world.get::<&mut Factory>(fab).unwrap();
+            f.start_job(part_id, now, cost.energy_joules).unwrap();
+            f.pending_job = None;
+        }
+
+        // update for module ui
+        world.get::<&mut PortHost>(station).unwrap().dock_gen += 1;
+    }
+}
+
+// TODO: Sim half of complete_due_jobs & deliver_craft

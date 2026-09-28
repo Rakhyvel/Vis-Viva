@@ -7,15 +7,12 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::{
-        factory::Factory,
-        parts::PartRegistry,
-        station::{pending_deduction, Station},
-    },
+    components::{parts::PartRegistry, station::Station},
     sim::{
         bodies::Body,
         docking::Docking,
         hierarchy::{Landed, Parent},
+        industry::{pending_deduction, Factory},
     },
 };
 

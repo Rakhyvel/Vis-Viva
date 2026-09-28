@@ -8,13 +8,13 @@ use nalgebra_glm::{vec2, Vec2};
 use crate::{
     astro::epoch::EphemerisTime,
     components::{
-        factory::{cost_status, CostKind, CostLine, Factory},
         inventory::PartInventory,
         parts::{PartDef, PartRegistry},
     },
     container,
     sim::{
         docking::Docking,
+        industry::{cost_status, CostKind, CostLine, Factory},
         resources::{station_resource_totals, Resource},
     },
     ui::{

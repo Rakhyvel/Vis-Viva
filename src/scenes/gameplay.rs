@@ -38,7 +38,6 @@ use crate::{
             apply_burn, craft_dv, replace_line_path, spawn_craft, AssociatedEntity, Command,
             ScheduledBurn,
         },
-        factory::{projected_completion, Factory},
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::Station,
@@ -61,6 +60,7 @@ use crate::{
             ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system,
             Landed, Named, Parent,
         },
+        industry::{commit_pending_builds, projected_completion, Factory},
         resources::{
             add_resource, commit_station, next_reservoir_limits, resource_store_amount,
             station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
@@ -483,7 +483,7 @@ impl Scene for Gameplay {
                 match msg {
                     TurnMessages::TogglePlay => {
                         let now = self.current_et.get();
-                        self.commit_pending_builds(now);
+                        commit_pending_builds(&self.world, &self.parts, now);
                         self.recompute_run_until();
                         self.paused = !self.paused;
                         if !self.paused {
@@ -2394,48 +2394,6 @@ impl Gameplay {
         h
     }
 
-    fn commit_pending_builds(&self, now: EphemerisTime) {
-        // Collect the factories
-        let pending: Vec<(Entity, u64)> = self
-            .world
-            .query::<&Factory>()
-            .iter()
-            .filter_map(|(e, f)| f.pending_job.map(|id| (e, id)))
-            .collect();
-
-        for (fab, part_id) in pending {
-            let station = self.world.get::<&Parent>(fab).unwrap().id;
-            let cost = &self.parts.get(part_id).unwrap().cost;
-
-            // Commit the parts subtraction
-            {
-                let mut inv = self.world.get::<&mut PartInventory>(station).unwrap();
-                for (id, n) in &cost.parts {
-                    for _ in 0..*n {
-                        inv.take(*id).unwrap();
-                    }
-                }
-            }
-
-            // Commit the resources subtraction
-            for (r, amount) in &cost.resources {
-                take_resource(&self.world, station, *r, *amount, now);
-            }
-
-            // Commit at the old rate, before the job changes it.
-            commit_station(&self.world, station, now);
-
-            {
-                let mut f = self.world.get::<&mut Factory>(fab).unwrap();
-                f.start_job(part_id, now, cost.energy_joules).unwrap();
-                f.pending_job = None;
-            }
-
-            // update for module ui
-            self.world.get::<&mut PortHost>(station).unwrap().dock_gen += 1;
-        }
-    }
-
     fn undock(&mut self, craft: Entity, app: &App) {
         const SEPARATION_DV: f64 = 0.1 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
 
@@ -2901,6 +2859,7 @@ impl Gameplay {
     }
 
     fn complete_due_jobs(&mut self, now: EphemerisTime, app: &App) {
+        // TODO: Split up into sim + render, move to resp. modules
         let done: Vec<(Entity, u64)> = self
             .world
             .query::<&Factory>()
@@ -2949,6 +2908,7 @@ impl Gameplay {
     }
 
     fn deliver_craft(&mut self, station: Entity, def: &PartDef, host_port: u32, app: &App) {
+        // TODO: Split up into sim + render, move to resp. modules
         let now = self.current_et.get();
         let parent = *self.world.get::<&Parent>(station).unwrap();
 

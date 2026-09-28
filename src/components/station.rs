@@ -1,37 +1,7 @@
-use hecs::{Entity, World};
-
-use crate::{
-    astro::units::SECONDS_PER_DAY,
-    components::{factory::Factory, parts::PartRegistry},
-    sim::{docking::Docking, resources::Resource},
-};
+use crate::{astro::units::SECONDS_PER_DAY, sim::resources::Resource};
 
 pub struct Station {
     pub num_crew: usize,
-}
-
-pub fn pending_deduction(
-    world: &World,
-    station: Entity,
-    registry: &PartRegistry,
-    r: Resource,
-) -> f32 {
-    let mut sum = 0.0;
-    for (_, (docking, f)) in world.query::<(&Docking, &Factory)>().iter() {
-        if docking.host != station {
-            continue;
-        }
-        let Some(id) = f.pending_job else { continue };
-        let Some(def) = registry.get(id) else {
-            continue;
-        };
-        for (res, amt) in &def.cost.resources {
-            if *res == r {
-                sum += *amt
-            }
-        }
-    }
-    sum
 }
 
 impl Resource {
