@@ -24,6 +24,8 @@ pub enum Event {
     Burn {
         /// The craft that this event applies to
         craft: Entity,
+
+        // TODO: Replace these fields with ScheduleBurn
         /// The craft's new orbit after performing the burn
         new_orbit: State,
         /// The sphere-of-influence radius of the craft's parent

@@ -40,7 +40,6 @@ use crate::{
     container,
     generation::{lexicon::Lexicon, polygon},
     scenes::{
-        events::{Event, EventQueue},
         fabricator::{FabricatorAction, FabricatorUi},
         game_over::GameOverUi,
         maneuver::ManeuverModal,
@@ -51,6 +50,7 @@ use crate::{
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
         docking::{allocate_ports, dock_tree, free_ports, next_free_port, Docking, PortHost},
+        events::{Event, EventQueue},
         hierarchy::{
             ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system,
             Landed, Named, Parent,

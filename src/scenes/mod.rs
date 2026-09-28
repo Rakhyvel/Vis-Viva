@@ -1,4 +1,3 @@
-pub(crate) mod events;
 pub(crate) mod fabricator;
 pub(crate) mod game_over;
 pub(crate) mod gameplay;

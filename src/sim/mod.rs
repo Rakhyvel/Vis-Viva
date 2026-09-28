@@ -4,6 +4,7 @@ use hecs::World;
 
 pub mod bodies;
 pub mod docking;
+pub mod events;
 pub mod hierarchy;
 pub mod industry;
 pub mod mission;
