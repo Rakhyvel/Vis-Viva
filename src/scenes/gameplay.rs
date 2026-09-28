@@ -42,11 +42,9 @@ use crate::{
         inventory::PartInventory,
         parts::{id_hash, ModuleSpec, PartDef, PartRegistry},
         station::{
-            add_resource, allocate_ports, commit_station, dock_tree, free_ports, next_free_port,
-            next_reservoir_limits, resource_store_amount, station_r_au,
-            station_resource_amount_flow, station_resource_totals, take_resource,
-            transfer_resource, Docking, Electrolyzer, Miner, PortHost, Resource, ResourceStore,
-            SolarPanel, Station,
+            add_resource, commit_station, next_reservoir_limits, resource_store_amount,
+            station_r_au, station_resource_amount_flow, station_resource_totals, take_resource,
+            transfer_resource, Electrolyzer, Miner, Resource, ResourceStore, SolarPanel, Station,
         },
     },
     container,
@@ -62,6 +60,7 @@ use crate::{
     },
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
+        docking::{allocate_ports, dock_tree, free_ports, next_free_port, Docking, PortHost},
         hierarchy::{
             ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system,
             Landed, Named, Parent,

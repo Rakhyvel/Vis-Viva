@@ -2,6 +2,7 @@
 use hecs::World;
 
 pub mod bodies;
+pub mod docking;
 pub mod hierarchy;
 
 pub struct Sim {

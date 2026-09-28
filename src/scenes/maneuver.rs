@@ -20,12 +20,10 @@ use crate::{
         },
         units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
-    components::{
-        craft::{craft_dv, Command, Craft},
-        station::allocate_ports,
-    },
+    components::craft::{craft_dv, Command, Craft},
     sim::{
         bodies::Body,
+        docking::allocate_ports,
         hierarchy::{Landed, Named, Parent},
     },
     ui::{
@@ -822,6 +820,7 @@ impl ManeuverModal {
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
             .filter_map(|(entity, (other_state, _, named, _))| {
+                // TODO: Extract to docking module
                 let other = other_state.propagate(current_et, mu).ok()?;
                 let dr = (other.r - this.r).magnitude();
                 let dv = (other.v - this.v).magnitude();

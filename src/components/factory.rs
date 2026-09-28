@@ -7,8 +7,9 @@ use crate::{
     components::{
         inventory::PartInventory,
         parts::{PartCost, PartRegistry},
-        station::{free_ports, station_resource_totals, Docking, Resource},
+        station::{station_resource_totals, Resource},
     },
+    sim::docking::{free_ports, Docking},
 };
 
 pub struct Factory {
