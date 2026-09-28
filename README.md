@@ -96,7 +96,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [x] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Post-MVP cleanup
   - [ ] split up big stuff:
-    - [ ] split `state.rs` so it returns DVec3 samples and leaves f32 conversion to rendering
+    - [x] split `state.rs` so it returns DVec3 samples and leaves f32 conversion to rendering
     - [ ] files: gameplay.rs, maneuver.rs, and station.rs
       - gameplay assets, new game, rendering, camera, picking, input, events, jobs, orbits, UI panel building
       - maneuver: modal state, view, planning, coloring

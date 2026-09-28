@@ -17,11 +17,11 @@ use crate::{
         inventory::PartInventory,
         tile::{TileMap, TileSets},
     },
+    sim::hierarchy::{Named, Parent},
 };
 
 pub struct SceneObject {
     pub bvh_node_id: Option<BVHNodeId>,
-    pub name: String,
 }
 
 #[derive(Clone, Copy)]
@@ -37,12 +37,6 @@ pub struct Body {
     pub magnetic_field: bool,
     pub density: f64, // In g/cm^3
     pub mu: f64,      // In (earth radii)^3 * years^-2
-}
-
-/// Component relating an entity to a parent body
-#[derive(Clone, Copy)]
-pub struct Parent {
-    pub id: Entity,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -61,6 +55,7 @@ pub fn spawn_body(
     body: Body,
     init_state: State,
     mut scene_obj: SceneObject,
+    named: Named,
     parent: Option<Parent>,
     tile_sets: &TileSets,
     world: &mut World,
@@ -141,6 +136,7 @@ pub fn spawn_body(
             body_entity,
             (
                 scene_obj,
+                named,
                 init_state,
                 body,
                 PartInventory {

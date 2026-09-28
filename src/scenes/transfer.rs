@@ -4,11 +4,9 @@ use nalgebra_glm::{vec2, Vec2};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::{
-        body::SceneObject,
-        station::{dock_tree, station_resource_totals, transferable, Resource},
-    },
+    components::station::{dock_tree, station_resource_totals, transferable, Resource},
     container,
+    sim::hierarchy::Named,
     ui::{
         button::Button,
         container::{Align, Container, Flow},
@@ -127,7 +125,7 @@ impl TransferUi {
 
         for host in dock_tree(world, craft) {
             let name = world
-                .get::<&SceneObject>(host)
+                .get::<&Named>(host)
                 .map_or_else(|_| "???".to_string(), |s| s.name.to_uppercase());
             let mut left_rows = vec![];
             let mut right_rows = vec![];

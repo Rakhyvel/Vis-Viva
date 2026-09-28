@@ -2,6 +2,7 @@ mod astro;
 mod components;
 mod generation;
 mod scenes;
+mod sim;
 mod ui;
 
 use std::cell::RefCell;

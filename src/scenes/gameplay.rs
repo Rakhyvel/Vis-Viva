@@ -61,6 +61,10 @@ use crate::{
         starbox::Starbox,
         transfer::{TransferResult, TransferUi},
     },
+    sim::hierarchy::{
+        ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system, Landed,
+        Named, Parent,
+    },
     ui::{
         anchor::{Anchor, AnchorPoint},
         bind::Binding,
@@ -80,8 +84,8 @@ use crate::{
 
 use crate::{
     components::{
-        body::{spawn_body, Body, Category, Parent, SceneObject},
-        craft::{Craft, Landed},
+        body::{spawn_body, Body, Category, SceneObject},
+        craft::Craft,
         icosphere,
     },
     generation::solar_system_gen::{self},
@@ -529,7 +533,7 @@ impl Scene for Gameplay {
 
                     let name = self
                         .world
-                        .get::<&SceneObject>(station)
+                        .get::<&Named>(station)
                         .map(|s| s.name.clone())
                         .unwrap_or_default();
                     self.game_over_ui.show(&name, cause, now, app);
@@ -546,9 +550,9 @@ impl Scene for Gameplay {
         self.transport_icon
             .set(if self.paused { Icon::Play } else { Icon::Pause });
 
-        self.orbit_system();
-        self.docked_position_system();
-        self.landed_system();
+        orbit_system(&mut self.world, self.current_et.get());
+        docked_position_system(&mut self.world);
+        landed_system(&mut self.world);
         self.select_system();
         self.camera_update(app);
         if !modal_open {
@@ -630,7 +634,7 @@ impl Scene for Gameplay {
         if let (Some(hovered), Some(selected)) = (self.hovered, self.selection.selected_entity()) {
             if hovered != selected {
                 let hovered_world_pos = self.world.get::<&WorldPosition>(hovered).unwrap().pos;
-                let scene_obj = self.world.get::<&SceneObject>(hovered).unwrap();
+                let named = self.world.get::<&Named>(hovered).unwrap();
 
                 let radius = self
                     .world
@@ -660,7 +664,7 @@ impl Scene for Gameplay {
                             &vec4(1.0, 1.0, 1.0, 1.0),
                         );
                         app.renderer
-                            .draw_text(screen_pos + vec2(8.0, 8.0), &scene_obj.name);
+                            .draw_text(screen_pos + vec2(8.0, 8.0), &named.name);
                     }
                     _ => {}
                 };
@@ -889,8 +893,8 @@ impl Gameplay {
                 mu: SUN_MU,
             },
             State::circular(0.1, EphemerisTime::new(rand::random()), 1.0),
-            SceneObject {
-                bvh_node_id: None,
+            SceneObject { bvh_node_id: None },
+            Named {
                 name: String::from("The Sun"),
             },
             None,
@@ -918,10 +922,8 @@ impl Gameplay {
             let planet_entity = spawn_body(
                 system.planet.0,
                 system.planet.1,
-                SceneObject {
-                    bvh_node_id: None,
-                    name,
-                },
+                SceneObject { bvh_node_id: None },
+                Named { name },
                 Some(Parent { id: sun_entity }),
                 &tile_sets,
                 &mut world,
@@ -940,10 +942,8 @@ impl Gameplay {
                 let moon_entity = spawn_body(
                     moon.0,
                     moon.1,
-                    SceneObject {
-                        bvh_node_id: None,
-                        name,
-                    },
+                    SceneObject { bvh_node_id: None },
+                    Named { name },
                     Some(Parent { id: planet_entity }),
                     &tile_sets,
                     &mut world,
@@ -967,8 +967,8 @@ impl Gameplay {
 
         let station = spawn_craft(
             station_payload,
-            SceneObject {
-                bvh_node_id: None,
+            SceneObject { bvh_node_id: None },
+            Named {
                 name: String::from("Station"),
             },
             Parent { id: station_parent },
@@ -1471,7 +1471,7 @@ impl Gameplay {
 
         let name = self
             .world
-            .get::<&SceneObject>(selected)
+            .get::<&Named>(selected)
             .map(|n| n.name.clone())
             .unwrap_or_else(|_| "???".into());
         out.push(Label::new(name).font(font_big, app));
@@ -1563,7 +1563,7 @@ impl Gameplay {
             let (verb, target) = command.title_parts();
             let name = self
                 .world
-                .get::<&SceneObject>(target)
+                .get::<&Named>(target)
                 .ok()
                 .map(|s| s.name.clone())
                 .unwrap_or_else(|| "???".into());
@@ -1781,9 +1781,9 @@ impl Gameplay {
                 Label::new(if has_parent { "MOONS" } else { "PLANETS" }).font(font_small_bold, app),
             );
             out.widgets.extend(children.iter().filter_map(|e| {
-                let child_scene_obj = self.world.get::<&SceneObject>(*e).ok()?;
+                let child_name = self.world.get::<&Named>(*e).ok()?;
                 Some(Box::new(
-                    Button::fit(&child_scene_obj.name, font, app, vec2(0.0, 0.0))
+                    Button::fit(&child_name.name, font, app, vec2(0.0, 0.0))
                         .use_style_link(&STYLE)
                         .on_click(CommandMessages::SelectEntity { entity: *e }),
                 ) as Box<dyn Widget<CommandMessages>>)
@@ -1802,9 +1802,9 @@ impl Gameplay {
             out.push(HRule::new(STYLE.border, 1.0, WIDTH));
             out.push(Label::new("CRAFT").font(font_small_bold, app));
             out.widgets.extend(craft.iter().filter_map(|e| {
-                let child_scene_obj = self.world.get::<&SceneObject>(*e).ok()?;
+                let child_name = self.world.get::<&Named>(*e).ok()?;
                 Some(Box::new(
-                    Button::fit(&child_scene_obj.name, font, app, vec2(0.0, 0.0))
+                    Button::fit(&child_name.name, font, app, vec2(0.0, 0.0))
                         .use_style_link(&STYLE)
                         .on_click(CommandMessages::SelectEntity { entity: *e }),
                 ) as Box<dyn Widget<CommandMessages>>)
@@ -1816,13 +1816,13 @@ impl Gameplay {
 
     fn build_crumbs(&self, selected: Entity, app: &App) -> Vec<Box<dyn Widget<CommandMessages>>> {
         let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let ancestors = self.ancestor_chain(selected); // outermost first
+        let ancestors = ancestor_chain(&self.world, selected); // outermost first
         let mut crumbs: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
         for (i, e) in ancestors.iter().enumerate() {
             if i > 0 {
                 crumbs.push(Box::new(Label::new(">").font(font, app)));
             }
-            let name = self.world.get::<&SceneObject>(*e).unwrap().name.clone();
+            let name = self.world.get::<&Named>(*e).unwrap().name.clone();
             crumbs.push(Box::new(
                 Button::fit(name, font, app, vec2(0.0, 0.0))
                     .use_style_link(&STYLE)
@@ -1831,25 +1831,6 @@ impl Gameplay {
         }
         crumbs.reverse();
         crumbs
-    }
-
-    fn ancestor_chain(&self, mut selected: Entity) -> Vec<Entity> {
-        let mut ancestors = vec![];
-
-        // Who is that man in my family who said I'll fail?
-        while let Ok(docking) = self.world.get::<&Docking>(selected) {
-            ancestors.push(docking.host);
-            selected = docking.host;
-        }
-
-        // finish eating, and come back again!
-        while let Ok(parent) = self.world.get::<&Parent>(selected) {
-            ancestors.push(parent.id);
-            selected = parent.id;
-        }
-
-        // maybe your food is talking to you!
-        ancestors
     }
 
     fn module_list(&self, station: Entity, app: &App) -> Section {
@@ -2318,7 +2299,7 @@ impl Gameplay {
 
         out.push(Label::new(header).font(font_small_bold, app));
 
-        let name = &self.world.get::<&SceneObject>(other).unwrap().name;
+        let name = &self.world.get::<&Named>(other).unwrap().name;
         out.push(
             Button::fit(name, font, app, vec2(0.0, 0.0))
                 .use_style_link(&STYLE)
@@ -2971,8 +2952,8 @@ impl Gameplay {
 
         let craft = spawn_craft(
             def.instantiate_craft(),
-            SceneObject {
-                bvh_node_id: None,
+            SceneObject { bvh_node_id: None },
+            Named {
                 name: def.name.clone(),
             },
             parent,
@@ -3061,101 +3042,6 @@ impl Gameplay {
         None
     }
 
-    /// Updates planets based on their on-rails orbits around their parent bodies
-    fn orbit_system(&mut self) {
-        // Build parent -> children map
-        let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
-
-        for (entity, (parent, _model)) in self.world.query::<(&Parent, &ModelComponent)>().iter() {
-            children.entry(parent.id).or_default().push(entity);
-        }
-
-        // Collect all entities with WorldPosition
-        let mut has_parent = HashMap::new();
-        for (entity, parent) in self.world.query::<&Parent>().iter() {
-            has_parent.insert(entity, parent.id);
-        }
-
-        // Find roots (entities without parent)
-        let mut roots = Vec::new();
-        for (entity, _) in self.world.query::<(&WorldPosition, &Body)>().iter() {
-            if !has_parent.contains_key(&entity) {
-                roots.push(entity);
-            }
-        }
-
-        let et = self.current_et.get();
-
-        // Kick off from roots
-        for root in roots {
-            let mu = self.world.get::<&Body>(root).unwrap().mu;
-            let root_pos = vec3(0.0, 0.0, 0.0);
-            self.propagate(&children, root, root_pos, mu, et);
-        }
-    }
-
-    fn propagate(
-        &mut self,
-        children: &HashMap<Entity, Vec<Entity>>,
-        entity: Entity,
-        parent_pos: DVec3,
-        parent_mu: f64,
-        t: EphemerisTime,
-    ) {
-        let mut world_pos = self.world.get::<&mut WorldPosition>(entity).unwrap();
-
-        let local_offset = if let Ok(orbit) = self.world.get::<&State>(entity) {
-            match orbit.propagate(t, parent_mu) {
-                Ok(s) => s.r,
-                Err(_) => return,
-            }
-        } else {
-            vec3(0.0, 0.0, 0.0)
-        };
-
-        let new_world = parent_pos + local_offset;
-        world_pos.pos = new_world;
-
-        drop(world_pos);
-
-        if let Some(kids) = children.get(&entity) {
-            let mu = self.world.get::<&Body>(entity).map(|b| b.mu).unwrap_or(0.0);
-            for &child in kids {
-                self.propagate(children, child, new_world, mu, t);
-            }
-        }
-    }
-
-    /// Updates craft to be on the surface of their planet
-    fn landed_system(&mut self) {
-        let mut pos_map = HashMap::new();
-        for (entity, (world_pos, _body)) in self.world.query::<(&WorldPosition, &Body)>().iter() {
-            pos_map.insert(entity, world_pos.pos);
-        }
-
-        for (_entity, (world_pos, parent, landed)) in
-            self.world
-                .query_mut::<(&mut WorldPosition, &Parent, &Landed)>()
-        {
-            let parent_pos = pos_map.get(&parent.id).unwrap();
-            world_pos.pos = parent_pos + landed.offset;
-        }
-    }
-
-    /// Updates craft to be right on their station's position
-    fn docked_position_system(&mut self) {
-        let mut pos_map = HashMap::new();
-        for (entity, world_pos) in self.world.query::<&WorldPosition>().iter() {
-            pos_map.insert(entity, world_pos.pos);
-        }
-
-        for (_, (world_pos, docking)) in self.world.query_mut::<(&mut WorldPosition, &Docking)>() {
-            if let Some(host_pos) = pos_map.get(&docking.host) {
-                world_pos.pos = *host_pos;
-            }
-        }
-    }
-
     fn sync_models(&mut self, app: &App) {
         for (_entity, (world_pos, model, scene_obj)) in
             self.world
@@ -3223,7 +3109,7 @@ impl Gameplay {
         }
 
         // Add projected reservoir limit events, Depleted and Filled
-        for (entity, (_, scene_obj)) in self.world.query::<(&PortHost, &SceneObject)>().iter() {
+        for (entity, (_, named)) in self.world.query::<(&PortHost, &Named)>().iter() {
             for (et, resource, rate) in next_reservoir_limits(
                 &self.world,
                 entity,
@@ -3235,14 +3121,14 @@ impl Gameplay {
                     marks.push(TimelineMark {
                         t: et,
                         kind: MarkKind::Critical,
-                        subject: scene_obj.name.clone(),
+                        subject: named.name.clone(),
                         detail: format!("{} Depleted", resource.long_name()),
                     })
                 } else {
                     marks.push(TimelineMark {
                         t: et,
                         kind: MarkKind::Good,
-                        subject: scene_obj.name.clone(),
+                        subject: named.name.clone(),
                         detail: format!("{} Filled", resource.long_name()),
                     })
                 }
@@ -3250,7 +3136,7 @@ impl Gameplay {
         }
 
         // Add projected mission burns (burns, SOI crossings, etc)
-        for (_, (craft, scene_obj)) in self.world.query::<(&Craft, &SceneObject)>().iter() {
+        for (_, (craft, named)) in self.world.query::<(&Craft, &Named)>().iter() {
             let Some(command) = &craft.command else {
                 continue;
             };
@@ -3261,7 +3147,7 @@ impl Gameplay {
                 marks.push(TimelineMark {
                     t: burn.t(),
                     kind: burn.purpose.into(),
-                    subject: scene_obj.name.clone(),
+                    subject: named.name.clone(),
                     detail: burn.desc.to_string(),
                 });
             }
@@ -3269,7 +3155,7 @@ impl Gameplay {
                 marks.push(TimelineMark {
                     t: et,
                     kind: MarkKind::SoiChange,
-                    subject: scene_obj.name.clone(),
+                    subject: named.name.clone(),
                     detail: label.to_string(),
                 });
             }
@@ -3297,20 +3183,20 @@ impl Gameplay {
     fn craft_name_from_event(&self, event: &Event) -> (String, String) {
         match event {
             Event::SoiChange { craft, desc, .. } | Event::Burn { craft, desc, .. } => {
-                let scene_obj = self.world.get::<&SceneObject>(*craft).unwrap();
-                (scene_obj.name.clone(), desc.to_string())
+                let named = self.world.get::<&Named>(*craft).unwrap();
+                (named.name.clone(), desc.to_string())
             }
 
             Event::Launch { craft } | Event::Land { craft } | Event::Dock { craft, .. } => {
-                let scene_obj = self.world.get::<&SceneObject>(*craft).unwrap();
-                (scene_obj.name.clone(), "???".to_string())
+                let named = self.world.get::<&Named>(*craft).unwrap();
+                (named.name.clone(), "???".to_string())
             }
 
             Event::FactoryComplete { craft, part_id } => {
                 let parent = self.world.get::<&Parent>(*craft).unwrap().id;
-                let scene_obj = self.world.get::<&SceneObject>(parent).unwrap();
+                let named = self.world.get::<&Named>(parent).unwrap();
                 let part_def = self.parts.get(*part_id).map_or("???", |p| p.name.as_str());
-                (scene_obj.name.clone(), part_def.to_string())
+                (named.name.clone(), part_def.to_string())
             }
 
             // No real craft name
@@ -3496,10 +3382,9 @@ impl Gameplay {
                 closest_body = Some(entity);
             }
         }
-        let closest_body = self
-            .get_ancestor(closest_body.unwrap())
-            .unwrap_or(self.selection.bodies[0]);
-        let closest_planet = self.get_ancestor(closest_body).unwrap_or(closest_body);
+        let closest_body =
+            get_ancestor(&self.world, closest_body.unwrap()).unwrap_or(self.selection.bodies[0]);
+        let closest_planet = get_ancestor(&self.world, closest_body).unwrap_or(closest_body);
         let closest_planet_soi = {
             let closest_planet_body = self.world.get::<&Body>(closest_planet).unwrap();
             let closest_planet_orb = self.world.get::<&State>(closest_planet).unwrap();
@@ -3558,9 +3443,8 @@ impl Gameplay {
         for (entity, (_line, _parent)) in self.world.query::<(&LinePathComponent, &Parent)>().iter()
         {
             let assoc_entity = *assoc_entity_map.get(&entity).unwrap();
-            let assoc_planet = self
-                .get_ancestor(assoc_entity)
-                .unwrap_or(self.selection.bodies[0]);
+            let assoc_planet =
+                get_ancestor(&self.world, assoc_entity).unwrap_or(self.selection.bodies[0]);
 
             let camera_dist =
                 (pos_map.get(&closest_body).unwrap() - self.camera_3d.world_pos).norm();
@@ -3610,18 +3494,6 @@ impl Gameplay {
             line.seam = (mean_anomaly / (2.0 * PI)).rem_euclid(1.0) as f32;
 
             world_pos.pos = *parent_pos;
-        }
-    }
-
-    fn get_ancestor(&self, entity: Entity) -> Option<Entity> {
-        let mut child = entity;
-        loop {
-            let parent = self.world.get::<&Parent>(child).ok()?; // if sun, this will return None (sun has no parent)
-            let parent_body = self.world.get::<&Body>(parent.id).ok()?;
-            if parent_body.mu == SUN_MU {
-                return Some(child);
-            }
-            child = parent.id;
         }
     }
 

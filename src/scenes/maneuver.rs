@@ -21,10 +21,11 @@ use crate::{
         units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
     components::{
-        body::{Body, Parent, SceneObject},
-        craft::{craft_dv, Command, Craft, Landed},
+        body::Body,
+        craft::{craft_dv, Command, Craft},
         station::allocate_ports,
     },
+    sim::hierarchy::{Landed, Named, Parent},
     ui::{
         container::Container,
         dropdown::Dropdown,
@@ -767,11 +768,11 @@ impl ManeuverModal {
             .get::<&Parent>(craft)
             .expect("craft should have parent")
             .id;
-        let mut binding = world.query::<(&State, &Body, &SceneObject, &Parent)>();
+        let mut binding = world.query::<(&State, &Body, &Named, &Parent)>();
         binding
             .iter()
             .filter(|(_, (_, _, _, p))| p.id == parent)
-            .map(|(entity, (_state, _body, scene_obj, _parent))| (entity, scene_obj.name.clone()))
+            .map(|(entity, (_state, _body, named, _parent))| (entity, named.name.clone()))
             .collect()
     }
 
@@ -781,11 +782,11 @@ impl ManeuverModal {
             .expect("craft should have parent")
             .id;
         // this already excludes landed craft, since they don't have State
-        let mut binding = world.query::<(&State, &Craft, &SceneObject, &Parent)>();
+        let mut binding = world.query::<(&State, &Craft, &Named, &Parent)>();
         binding
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
-            .map(|(entity, (_state, _body, scene_obj, _parent))| (entity, scene_obj.name.clone()))
+            .map(|(entity, (_state, _body, named, _parent))| (entity, named.name.clone()))
             .collect()
     }
 
@@ -814,17 +815,17 @@ impl ManeuverModal {
         };
 
         // this already excludes landed craft, since they don't have State
-        let mut binding = world.query::<(&State, &Craft, &SceneObject, &Parent)>();
+        let mut binding = world.query::<(&State, &Craft, &Named, &Parent)>();
         binding
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
-            .filter_map(|(entity, (other_state, _, scene_obj, _))| {
+            .filter_map(|(entity, (other_state, _, named, _))| {
                 let other = other_state.propagate(current_et, mu).ok()?;
                 let dr = (other.r - this.r).magnitude();
                 let dv = (other.v - this.v).magnitude();
                 let free_ports = allocate_ports(world, craft, entity).is_some();
                 (dr < DOCKING_RANGE && dv < DOCKING_SPEED && free_ports)
-                    .then(|| (entity, scene_obj.name.clone()))
+                    .then(|| (entity, named.name.clone()))
             })
             .collect()
     }

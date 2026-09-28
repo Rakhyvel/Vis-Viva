@@ -18,9 +18,10 @@ use crate::{
         units::LITTLE_G,
     },
     components::{
-        body::{Parent, SceneObject},
+        body::SceneObject,
         station::{station_resource_totals, stored_mass_kg, take_resource, Resource},
     },
+    sim::hierarchy::{Named, Parent},
 };
 
 pub struct Craft {
@@ -210,13 +211,10 @@ impl Command {
     }
 }
 
-pub struct Landed {
-    pub offset: DVec3,
-}
-
 pub fn spawn_craft(
     craft: Craft,
     mut scene_obj: SceneObject,
+    named: Named,
     parent: Parent,
     world: &mut World,
     renderer: &RenderContext,
@@ -250,7 +248,7 @@ pub fn spawn_craft(
     scene_obj.bvh_node_id = Some(bvh_node_id);
 
     world
-        .insert(craft_entity, (scene_obj, parent, craft))
+        .insert(craft_entity, (scene_obj, named, parent, craft))
         .unwrap();
 
     craft_entity
