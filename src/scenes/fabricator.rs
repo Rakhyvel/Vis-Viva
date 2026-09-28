@@ -8,11 +8,10 @@ use nalgebra_glm::{vec2, Vec2};
 use crate::{
     astro::epoch::EphemerisTime,
     components::{
-        body::Parent,
         factory::{cost_status, CostKind, CostLine, Factory},
         inventory::PartInventory,
         parts::{PartDef, PartRegistry},
-        station::{station_resource_totals, Resource},
+        station::{station_resource_totals, Docking, Resource},
     },
     container,
     ui::{
@@ -95,7 +94,7 @@ impl FabricatorUi {
 
         self.fabricator = Some(fabricator);
 
-        let station = world.get::<&Parent>(fabricator).unwrap().id;
+        let station = world.get::<&Docking>(fabricator).unwrap().host;
         let part_inventory = world.get::<&PartInventory>(station).unwrap();
         let pending = world
             .get::<&Factory>(fabricator)

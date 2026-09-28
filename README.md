@@ -1,6 +1,6 @@
 # Vis Viva
 
-A real-time-with-pauses, event-driven space colony survival strategy game. Start off in a sleeper ship sent across the galaxy to a system _believed_ to have a habitable world, with finite starter resources.
+A real-time-with-pauses, event-driven space colony sandbox survival strategy game. Arrive in a procedurally generated star system with finite resources and incomplete knowledge. Build an industrial foothold, deploy probes to uncover the system's true properties, and use quantified uncertainty to decide which bets are worth making, all while tending to a fragile closed ecosystem and extending your reach across the system.
 
 ## TODO:
 
@@ -56,8 +56,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
       - [x] What part is complete? What were you building?
     - [x] event list on left side, shows what's next, what's paused
     - [x] scissor timeline so that dates dont draw off the side
-    - [ ] make buttons/sliders pause automatically
-    - [ ] gotta figure out a way to include the year in the event list!!
+    - [x] gotta figure out a way to include the year in the event list!!
     - [ ] clicking event rows, or events on the timeline, takes you to the craft
   - [ ] better craft info
     - [ ] tell me the orbital elements for a craft/body
@@ -72,7 +71,6 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] fabricator shows power draw rate, completion date, and days-until-completion
   - [x] make linepaths participate in occlusion again
   - [x] lose the game if the station dies
-    - [ ] stop ahead of depletion (30 days, 7 days, 1 day)
   - [x] basic mining
     - [x] dray has water tank, mining module, battery
     - [x] when on surface, can mine, fills water tank, and STOPS before it overflows
@@ -90,55 +88,26 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - [x] fabricating a craft takes up a docking spot, open the station's docking tab on completion
     - [x] get rid of the stage/payload distinction, just have parts and craft and modules
     - [ ] docked craft contribute mass to the host's burns
-  - [ ] resource transfer
+  - [x] resource transfer
     - [x] Dray and Pico have actual H2 and O2 tanks
     - [x] Engines use H2 and O2 from the tanks
     - [x] resource transfer modal
       - [x] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
     - [x] dont just take H2 and O2 (players have to transfer to docked craft)
-- [ ] Mining && ISRU
-  - [x] Ilmetite smelting (just give generic "metal" for MVP)
-  - [x] station rendevous
-  - [ ] when on surface: able to mine ice and ilmenite, into cargo hold and water tank
-    - copy `volatiles = sample_ice_fraction * tidal_ice_retention` into Body from solar_system_gen, use that for the Ice abundance
-    - `crustal_metals = f_iron * (1 - core_mass_fraction)`
-    - tile temp for bodies, colder near poles
-    - terrain, low freq noise map over the tiles
-    - ice = volatiles * tile-temp
-    - ilmenite = crustal_metals * differentiation(radius) * mare_weight(terrain)
-    - abundance = "total tonnage at that site"
-      - largely uncertain, with high noise floor
-    - availability = "energy per kg"
-      - cheaply inferable, no noise floor, otherwise players get mad. Gambles are **ALWAYS** on reward, never on cost. Never hestiate to randomly reward the player. Never punish the player for something they have no control of/insight into.
-      * for ice: a function of the tile_map and the `rough` param
-      * for ilmenite: a function of atmospheric pressure and surface gravity and the `rough` param
-  - [ ] inventory transfer modal
-  - [ ] ability to choose your landing site from what's available underneathe you
-  - [ ] surface outpots on tiles (give them solar panels for now)
-  - Rules:
-    - Every resource should have a useful role somewhere in the system, and preferably a secondary use that competes with its first.
-    - The byproducts of processes are always useful.
-    - Natural resources are clustered out in the system, imperfectly overlap, and distributed based on the hidden parameters.
-  - Eventual modules:
-    x Electrolysis: H2O + Energy -> H2 + O2
-    - Hydrolox Fuel Cell: H2 + O2 -> H2O + Energy (cleaner, but H2 tanks should be a pain)
-    - Methalox Fuel Cell: CH4 + O2 -> H2O + CO2 + Energy (not as nice with the CO2, but no H2)
-    - Chemistry Lab: Has cartridges for specific processes:
-      - Sabatier: CO2 + H2 -> CH4 + H2O
-      - Methane Pyrolysis: CH4 -> C, H2
-      - CO2 Scrubbing: CaO + CO2 -> CaCO3
-      - Haber Bosch: N2 + H2 -> NH3
-    - Smelter does a bunch of refinements:
-      - TiO2 + Energy -> Ti O2
-      - Al2O3 + Energy -> Al + O2
-      - SiO2 + Energy -> Si + O2
-      - CaCO3 + Energy -> CaO + CO2
-    - Greenhouse: CO2 + H2O + Energy -> Food + O2 (composes maybe too well with methalox fuel cell?)
+- [ ] Post-MVP cleanup
+  - [ ] _start_ crew death on resource depletion, rather than immediate death, with big red text timer banner
+    - [ ] suffocation takes 3 mins
+    - [ ] dehydration takes 3 days
+    - [ ] (eventual) starvation takes 3 weeks
+    - [ ] need to cascade energy/water outages
+    - [ ] spawn the game-over modal on full crew death, but don't close out game, just gray-out all actions
+  - [ ] gradual resource transfers
+    - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)
+    - [ ] Need some way to vent water of a Dray that's too heavy
+  - [ ] disable miner if no power
+  - [ ] make buttons/sliders pause automatically
 - [ ] Science
-  - [ ] body rotation, axial tilt
-    - allows polar mapping probes to actually exist
-    * axial tilt affects seasons, temps, could have crazy uranus worlds
-    * rotation affects landing and launch delta V
+  - [ ] Start off with a full Pico docked
   - [ ] measurements
     - z = W * X * H^T + epsilon(X)
       - z is the measurement vector
@@ -148,7 +117,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
       - epsilon(X) is state-dependent noise
     - D += (WH)^T R^-1 (WH)
     - nu += (WH)^T R-1 z
-  - [ ] parameters
+  - [ ] Hidden parameters to estimate:
     - [T_surf, ice, maf, depth, rough]
       - T_surf: surface pressure, ice abundance (smooth, from tile temp map)
       - ice: water ice mass fraction
@@ -168,8 +137,97 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - Optics noise scales with phase angle and slant range
   - [ ] W
     - Classic tradeoff of resolution vs coverage, flybys want full coverage, orbits want low eventual resoltuion
+  - [ ] body rotation, axial tilt
+    - allows polar mapping probes to actually exist
+    * axial tilt affects seasons, temps, could have crazy uranus worlds
+    * rotation affects landing and launch delta V
   - [ ] Add spatial smoothness prior
   - [ ] Show mean + sigma, never truth. Tile coloring overlays by posterior mean, saturated with confidence
+- [ ] Mining && ISRU
+  - A big pull of the game is having lots of resources and ores that spawn exactly where they would in the solar system, with resources that have distinct kinds of uses
+  - And refinement chains that give nicer materials the deeper down the chain the user invests
+    - ilmenite -> could just be used as regolith for greenhouses
+    - OR smelt ilmenite -> Fe, and TiO2 used for paints
+    - OR refine TiO2 -> Ti, very useful as a metal
+  - [ ] miners mine resource items that go into an invetory (ice for water, etc), that are processed into fluid resources
+  - [ ] inventory transfer modal
+  - [ ] Metallic ores that give different ratios of metal
+    - [ ] Ilmenite: Fe + Ti
+    - [ ] Magnetite/Hematite: Fe
+    - [ ] Olivine: Mg + Fe + Si
+    - [ ] Anorthite: Al + Si + Ca
+    - [ ] Quartz: Si
+  - [x] station rendevous
+  - [ ] when on surface: able to mine ice and ilmenite, into cargo hold and water tank
+    - copy `volatiles = sample_ice_fraction * tidal_ice_retention` into Body from solar_system_gen, use that for the Ice abundance
+    - `crustal_metals = f_iron * (1 - core_mass_fraction)`
+    - tile temp for bodies, colder near poles
+    - terrain, low freq noise map over the tiles
+    - ice = volatiles * tile-temp
+    - ilmenite/magnetite/hematite = maf * differentiation(radius) * differentiation(radius) * mare_weight(terrain) * {ore}_weight
+    - abundance = "total tonnage at that site"
+      - largely uncertain, with high noise floor
+    - availability = "energy per kg"
+      - cheaply inferable, no noise floor, otherwise players get mad. Gambles are **ALWAYS** on reward, never on cost. Never hestiate to randomly reward the player. Never punish the player for something they have no control of/insight into.
+      * for ice: a function of the tile_map and the `rough` param
+      * for ilmenite: a function of atmospheric pressure and surface gravity and the `rough` param
+  - [ ] ability to choose your landing site from what's available underneathe you
+  - [ ] surface outpots on tiles (give them solar panels for now)
+  - [ ] mining drill bit durability
+  - Rules:
+    - Every resource should have a useful role somewhere in the system, and preferably a secondary use that competes with its first.
+    - The byproducts of processes are always useful.
+    - Natural resources are clustered out in the system, imperfectly overlap, and distributed based on the hidden parameters.
+  - Eventual modules:
+    - [x] Electrolysis: H2O + Energy -> H2 + O2
+    - [ ] Hydrolox Fuel Cell: H2 + O2 -> H2O + Energy (cleaner, but H2 tanks should be a pain)
+    - [ ] Methalox Fuel Cell: CH4 + O2 -> H2O + CO2 + Energy (not as nice with the CO2, but no H2)
+    - [ ] Chemistry Lab: Has cartridges for specific processes:
+      - [ ] Sabatier: CO2 + H2 -> CH4 + H2O
+      - [ ] Methane Pyrolysis: CH4 -> C, H2
+      - [ ] CO2 Scrubbing: CaO + CO2 -> CaCO3
+      - [ ] Haber Bosch: N2 + H2 -> NH3
+    - [ ] Smelter (or just fabricators?) does a bunch of refinements:
+      - [ ] TiO2 + Energy -> Ti O2
+      - [ ] Al2O3 + Energy -> Al + O2
+      - [ ] SiO2 + Energy -> Si + O2
+      - [ ] CaCO3 + Energy -> CaO + CO2
+    - [ ] Greenhouse: CO2 + H2O + NH3 + Energy -> Food + O2 (composes maybe too well with methalox fuel cell?)
+    - [ ] Crew + Water -> Crew + Urine
+    - [ ] Crew + Food -> Crew + Waste
+    - [ ] Urine + Energy -> Water
+    - [ ] Waste + Energy -> H2O + CO2 + NH3
+- [ ] craft models
+  - [ ] archetypes
+    - [ ] landers
+    - [ ] tugs
+    - [ ] station cores
+    - [ ] probes
+  - [ ] modules
+    - [ ] solar arrays
+    - [ ] nuclear reactor module
+    - [ ] battery
+    - [ ] radiator array
+    - [ ] fuel cells
+    - [ ] tanks
+    - [ ] inventory storage
+    - [ ] crew habitat
+    - [ ] greenhouse
+    - [ ] science lab
+    - [ ] microwave power receiver/transmitter
+  - [ ] surface tiles
+    - [ ] miners (for different purposes)
+    - [ ] warehouse
+    - [ ] solar farm
+    - [ ] nuclear power plant
+    - [ ] fuel cells
+    - [ ] tanks
+    - [ ] crew habitat
+    - [ ] greenhouse
+    - [ ] microwave power receiver/transmitter
+    - [ ] materials processing labs (larger than orbital)
+    - [ ] factory
+    - [ ] launch/landing pad
 - [ ] Game saves and loading
 - [ ] Misc stuff
   - [ ] incr craft names, or let people rename them
@@ -202,6 +260,7 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
   - [ ] radiation as a hazard to shield against
     - crew die if they're exposed to radiation, shielding adds mass, mass affects delta V
   - [ ] craft need parachute/landing gear in order to land
+  - [ ] food decay
   - [ ] win if you beam a message back to earth, huge amount of power, megaproject
 - [ ] Misc polish
   - [ ] planetary atmospheres, clouds, tile detail
@@ -210,7 +269,6 @@ A real-time-with-pauses, event-driven space colony survival strategy game. Start
     - manuever kinds in the dropdown
     - what modules do, when you hover over their title
     - destinations in the planner, its size, its composition, etc
-  - [ ] let people explore the game after game over, but disable the play button
   - [ ] make actual building models, and rotate them to their tile's normal
   - [ ] show more info about stage cards, their dv, their resources, maybe a little model sprite, in VAB and factory
   - [ ] somehow show the planned orbital geometry to a player, if it ends up mattering (tuning just dv and time might be fine?)

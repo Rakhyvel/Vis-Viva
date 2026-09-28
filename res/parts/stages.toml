@@ -26,8 +26,8 @@ id = 'dray'
 name = 'Dray'
 desc = 'Can land on bodies, mine resources like water ice and Ilmenite, and bring them back to the station for processing.'
 dry_mass_kg = 500.0
-energy_kwh = 7#200.0
-#inputs = {metal = 4}
+energy_kwh = 7200.0
+inputs = {metal = 4}
 ports = 6
 ports_required = 1
 isp = 450.0
@@ -42,20 +42,18 @@ capacity = 5_000_000.0
 kind = "store"
 resource = "hydrogen"
 capacity = 135.0
-amount = 135.0
 
 [[parts.modules]]
 kind = "store"
 resource = "oxygen"
 capacity = 742.5
-amount = 742.5
 
 [[parts.modules]]
 kind = "store"
 resource = "water"
-capacity = 500.0
+capacity = 1000.0
 
 [[parts.modules]]
 kind = "miner"
-kg_per_s = 0.0015
+kg_per_s = 0.003
 power_watts = 5.0

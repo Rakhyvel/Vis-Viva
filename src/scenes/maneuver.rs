@@ -654,6 +654,7 @@ impl ManeuverModal {
                     .cross_align(Align::Center)
                     .padding(vec2(12.0, 0.0)),
                 ));
+                // TODO: Don't add the porkchop plot until a destination has been chosen, and don't add it for "dock"
                 sections.push(Box::new(PorkchopPicker::new(
                     vec2(WIDTH, WIDTH * 3.0 / 4.0),
                     self.porkchop_texture_id,

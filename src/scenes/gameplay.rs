@@ -1069,7 +1069,7 @@ impl Gameplay {
             },
             ResourceStore {
                 resource: Resource::Oxygen,
-                amount: 600.0,
+                amount: 10.0,
                 capacity: 600.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1083,7 +1083,7 @@ impl Gameplay {
             },
             ResourceStore {
                 resource: Resource::Hydrogen,
-                amount: 100.0,
+                amount: 0.0,
                 capacity: 100.0,
                 amount_et: EphemerisTime::epoch(),
             },
@@ -1430,7 +1430,7 @@ impl Gameplay {
                     Label::new(mark.subject.clone())
                         .font(font, app)
                         .color(subject_color),
-                    Label::new(mark.t.short_datetime()).font(font, app),
+                    Label::new(mark.t.short_date()).font(font, app),
                 )
                 .flow(Flow::Horizontal)
                 .justify(Justify::SpaceBetween)
