@@ -3,10 +3,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-use crate::{
-    astro::units::JOULES_PER_KWH,
-    components::{craft::Craft, station::Resource},
-};
+use crate::{astro::units::JOULES_PER_KWH, components::craft::Craft, sim::resources::Resource};
 
 /// A file full of parts definitions
 #[derive(serde::Deserialize)]

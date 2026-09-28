@@ -17,11 +17,11 @@ use crate::{
         transfer::{FlybyPlan, TransferPlan},
         units::LITTLE_G,
     },
-    components::{
-        body::SceneObject,
-        station::{station_resource_totals, stored_mass_kg, take_resource, Resource},
+    components::body::SceneObject,
+    sim::{
+        hierarchy::{Named, Parent},
+        resources::{station_resource_totals, stored_mass_kg, take_resource, Resource},
     },
-    sim::hierarchy::{Named, Parent},
 };
 
 pub struct Craft {

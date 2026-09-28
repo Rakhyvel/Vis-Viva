@@ -11,10 +11,12 @@ use crate::{
         factory::{cost_status, CostKind, CostLine, Factory},
         inventory::PartInventory,
         parts::{PartDef, PartRegistry},
-        station::{station_resource_totals, Resource},
     },
     container,
-    sim::docking::Docking,
+    sim::{
+        docking::Docking,
+        resources::{station_resource_totals, Resource},
+    },
     ui::{
         button::Button,
         container::{Align, Container, Flow},

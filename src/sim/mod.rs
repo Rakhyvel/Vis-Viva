@@ -1,9 +1,11 @@
-///! Headless game simulation code
+///! Headless game simulation code. Should have no dependency on Apricot or OpenGL, making it easy to unit
+/// test.
 use hecs::World;
 
 pub mod bodies;
 pub mod docking;
 pub mod hierarchy;
+pub mod resources;
 
 pub struct Sim {
     world: World,

@@ -4,9 +4,12 @@ use nalgebra_glm::{vec2, Vec2};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::station::{station_resource_totals, transferable, Resource},
     container,
-    sim::{docking::dock_tree, hierarchy::Named},
+    sim::{
+        docking::dock_tree,
+        hierarchy::Named,
+        resources::{station_resource_totals, transferable, Resource},
+    },
     ui::{
         button::Button,
         container::{Align, Container, Flow},

@@ -3,8 +3,8 @@ use nalgebra_glm::{vec2, vec4};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    components::station::Resource,
     container,
+    sim::resources::Resource,
     ui::{
         button::Button,
         container::{Align, Container},
