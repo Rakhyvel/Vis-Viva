@@ -989,6 +989,13 @@ impl Gameplay {
         );
         world.insert_one(station, station_state).unwrap();
 
+        let vertices: Vec<f32> = station_state
+            .generate_orbit_vertices(8192, parent_mu, None)
+            .unwrap()
+            .iter()
+            .flat_map(|v| v.iter().map(|x| *x as f32))
+            .collect();
+
         replace_line_path(
             &mut world,
             &app.renderer,
@@ -996,11 +1003,7 @@ impl Gameplay {
             Some((
                 WorldPosition { pos: parent_pos },
                 Parent { id: station_parent },
-                LinePathComponent::new(
-                    station_state
-                        .generate_orbit_vertices(8192, parent_mu, None)
-                        .unwrap(),
-                ),
+                LinePathComponent::new(vertices),
                 AssociatedEntity { associate: station },
             )),
         );
@@ -2475,6 +2478,13 @@ impl Gameplay {
         commit_station(&self.world, host, now);
         commit_station(&self.world, craft, now);
 
+        let vertices: Vec<f32> = new_state
+            .generate_orbit_vertices(8192, parent_mu, None)
+            .unwrap()
+            .iter()
+            .flat_map(|v| v.iter().map(|x| *x as f32))
+            .collect();
+
         replace_line_path(
             &mut self.world,
             &app.renderer,
@@ -2484,11 +2494,7 @@ impl Gameplay {
                     pos: parent_world_pos,
                 },
                 Parent { id: parent },
-                LinePathComponent::new(
-                    new_state
-                        .generate_orbit_vertices(8192, parent_mu, None)
-                        .unwrap(),
-                ),
+                LinePathComponent::new(vertices),
                 AssociatedEntity { associate: craft },
             )),
         );
@@ -2764,6 +2770,13 @@ impl Gameplay {
                     self.world.get::<&WorldPosition>(new_parent).unwrap().pos;
                 let new_parent_mu = self.world.get::<&Body>(new_parent).unwrap().mu;
 
+                let vertices: Vec<f32> = new_craft_orbit
+                    .generate_orbit_vertices(8192, new_parent_mu, Some(new_soi_radius))
+                    .unwrap()
+                    .iter()
+                    .flat_map(|v| v.iter().map(|x| *x as f32))
+                    .collect();
+
                 replace_line_path(
                     &mut self.world,
                     &app.renderer,
@@ -2773,11 +2786,7 @@ impl Gameplay {
                             pos: new_parent_world_pos, // center the orbit line path about the new parent
                         },
                         Parent { id: new_parent },
-                        LinePathComponent::new(
-                            new_craft_orbit
-                                .generate_orbit_vertices(8192, new_parent_mu, Some(new_soi_radius))
-                                .unwrap(),
-                        ),
+                        LinePathComponent::new(vertices),
                         AssociatedEntity { associate: craft },
                     )),
                 );
@@ -2804,6 +2813,14 @@ impl Gameplay {
                 let parent = self.world.get::<&Parent>(craft).unwrap().id;
                 let parent_world_pos = self.world.get::<&WorldPosition>(parent).unwrap().pos;
                 let parent_mu = { self.world.get::<&Body>(parent).unwrap().mu };
+
+                let vertices: Vec<f32> = new_orbit
+                    .generate_orbit_vertices(8192, parent_mu, soi_radius)
+                    .unwrap()
+                    .iter()
+                    .flat_map(|v| v.iter().map(|x| *x as f32))
+                    .collect();
+
                 replace_line_path(
                     &mut self.world,
                     &app.renderer,
@@ -2813,11 +2830,7 @@ impl Gameplay {
                             pos: parent_world_pos,
                         },
                         Parent { id: parent },
-                        LinePathComponent::new(
-                            new_orbit
-                                .generate_orbit_vertices(8192, parent_mu, soi_radius)
-                                .unwrap(),
-                        ),
+                        LinePathComponent::new(vertices),
                         AssociatedEntity { associate: craft },
                     )),
                 );

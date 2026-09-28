@@ -106,16 +106,19 @@ pub fn spawn_body(
     if let Some(parent) = parent {
         let parent_world_pos = world.get::<&WorldPosition>(parent.id).unwrap().pos;
         let parent_mu = { world.get::<&Body>(parent.id).unwrap().mu };
+        let vertices: Vec<f32> = init_state
+            .generate_orbit_vertices(8192, parent_mu, None)
+            .unwrap()
+            .iter()
+            .flat_map(|v| v.iter().map(|x| *x as f32))
+            .collect();
+
         let _line_path_entity = world.spawn((
             WorldPosition {
                 pos: parent_world_pos,
             },
             parent,
-            LinePathComponent::new(
-                init_state
-                    .generate_orbit_vertices(8192, parent_mu, None)
-                    .unwrap(),
-            ),
+            LinePathComponent::new(vertices),
             AssociatedEntity {
                 associate: body_entity,
             },

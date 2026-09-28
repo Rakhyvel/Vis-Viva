@@ -199,11 +199,11 @@ impl State {
         segments: i32,
         mu: f64,
         soi_radius: Option<f64>,
-    ) -> Result<Vec<f32>, String> {
+    ) -> Result<Vec<DVec3>, String> {
         // Find period, if periodic, do the loop
         // If not periodic, clip to SOI
 
-        let mut vertices = Vec::with_capacity((segments as usize + 1) * 3);
+        let mut vertices = Vec::with_capacity(segments as usize + 1);
 
         if let Some(period) = self.period(mu) {
             let mut et = self.t;
@@ -211,9 +211,7 @@ impl State {
             for _ in 0..=segments {
                 let new_state = self.propagate(et, mu)?;
 
-                vertices.push(new_state.r.x as f32);
-                vertices.push(new_state.r.y as f32);
-                vertices.push(new_state.r.z as f32);
+                vertices.push(new_state.r);
 
                 let step_secs = period * SECONDS_PER_YEAR / (segments as f64);
                 if step_secs > i64::MAX as f64 / ET_PER_SECOND {
@@ -246,9 +244,7 @@ impl State {
                 assert!(pos.y.is_finite());
                 assert!(pos.z.is_finite());
 
-                vertices.push(pos.x as f32);
-                vertices.push(pos.y as f32);
-                vertices.push(pos.z as f32);
+                vertices.push(pos);
 
                 et += EphemerisTime::from_secs(SECONDS_PER_HOUR);
             }
