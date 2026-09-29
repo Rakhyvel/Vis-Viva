@@ -3,6 +3,7 @@
 use hecs::World;
 
 pub mod bodies;
+pub mod clock;
 pub mod docking;
 pub mod events;
 pub mod hierarchy;

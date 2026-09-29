@@ -102,7 +102,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
       - maneuver: modal state, view, planning, coloring
       - station: ledger, flows and modules, docking, Resource
       - sim
-        - hierarchy (positions and ancestry): Parent, Name (form SceneObject.name), Landed, orbit_system, propagate, landed_system, docked_position_system, get_ancestor, ancestor_chain, set_orbit
+        - hierarchy (positions and ancestry): Parent, Name (from SceneObject.name), Landed, orbit_system, propagate, landed_system, docked_position_system, get_ancestor, ancestor_chain, set_orbit
         - bodies (celestial bodies): Body, Category, gaseous, mass, habitable, is_giant, TileMap, SurfaceTile, TileSets
         - docking (ports and the dock tree): Docking, PortHost (drop dock_gen), allocate_ports, next_free_port, free_ports, dock_root, dock_tree, dock(), undock(), docking-range predicate from get_craft_colocated
         - resources (stored quantities): Resource, ResourceStore, stores_of, totals, store_amount, commit, add/take (clamped), transferable/transfer, stored_mass, next_limits, SolarPanel, Electrolyzer, Miner, station_net_watts, resource_flow, one "is running" rule, set_enabled(world, module, bool, now) that commits before changing a rate
@@ -112,7 +112,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
         - mission (commands) Command (absorbs ManeuverResult's helpers and Dock{depart_et}), ScheduleBurn, BurnPurpose, MissionState enum, title_parts
         - events (event queue): Event (with Burn{craft, burn: ScheduleBurn}), EventQueue (private map, peek_next, iter), schedule(command), apply(event) -> Vec<SimEffect>
         - life_support (crew): Station{crew}, consumption constants, crew_loss(), later the timers
-        - clock (time contorl): Clock {now, paused, run_until, speed} (no Rc), SimSpeed rates, next_stop(&Sim) combining the next event, resevoir limit and job completion
+        - clock (time control): Clock {now, paused, run_until, speed} (no Rc), SimSpeed rates, next_stop(&Sim) combining the next event, resevoir limit and job completion
         - mod (facade): Sim{world, clock, events, parts}, step(dt) -> Vec<SimEffect>, apply_command(), SimEffect {OrbitChanged(e), CraftDelivered(e), FocusEntity(e), CrewLost(e, Resource)}
       - procgen
         - new_game: World generation and starter station
