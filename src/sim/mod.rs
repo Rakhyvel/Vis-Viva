@@ -7,6 +7,7 @@ pub mod docking;
 pub mod events;
 pub mod hierarchy;
 pub mod industry;
+pub mod life_support;
 pub mod mission;
 pub mod parts;
 pub mod propulsion;

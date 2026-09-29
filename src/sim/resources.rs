@@ -7,12 +7,12 @@ use crate::{
         epoch::EphemerisTime,
         units::{EARTH_RADII_PER_AU, SECONDS_PER_DAY},
     },
-    components::station::Station,
     sim::{
         bodies::Body,
         docking::Docking,
         hierarchy::{Landed, Parent},
         industry::{pending_deduction, Factory},
+        life_support::{Station, O2_PER_CREW_DAY, WATER_PER_CREW_DAY},
         parts::PartRegistry,
     },
 };
@@ -401,8 +401,6 @@ pub fn station_resource_amount_flow(
     // Accumulate producers of a resource
     const H2_PER_H2O: f32 = 0.1119;
     const O2_PER_H2O: f32 = 0.8881;
-    const O2_PER_CREW_DAY: f32 = -0.84;
-    const WATER_PER_CREW_DAY: f32 = -3.5;
 
     let num_crew = world.get::<&Station>(host).map(|s| s.num_crew).unwrap_or(0);
     let crew_water = num_crew as f32 * WATER_PER_CREW_DAY / SECONDS_PER_DAY as f32;

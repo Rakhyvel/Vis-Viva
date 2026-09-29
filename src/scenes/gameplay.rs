@@ -33,10 +33,7 @@ use crate::{
             SUN_MU,
         },
     },
-    components::{
-        craft::{replace_line_path, spawn_craft, AssociatedEntity},
-        station::Station,
-    },
+    components::craft::{replace_line_path, spawn_craft, AssociatedEntity},
     container,
     generation::{lexicon::Lexicon, polygon},
     scenes::{
@@ -56,6 +53,7 @@ use crate::{
             Landed, Named, Parent,
         },
         industry::{commit_pending_builds, projected_completion, Factory},
+        life_support::{crew_death, Station},
         mission::{Command, ScheduledBurn},
         parts::{id_hash, ModuleSpec, PartDef, PartInventory, PartRegistry},
         propulsion::{apply_burn, craft_dv, Craft},
@@ -522,7 +520,7 @@ impl Scene for Gameplay {
             }
 
             if !self.game_over_ui.is_shown() {
-                if let Some((station, cause)) = self.crew_death() {
+                if let Some((station, cause)) = crew_death(&self.world, self.current_et.get()) {
                     let now = self.current_et.get();
                     commit_station(&self.world, station, now);
                     self.world.get::<&mut Station>(station).unwrap().num_crew = 0;
@@ -2979,25 +2977,6 @@ impl Gameplay {
             .unwrap();
 
         self.selection.crafts.push(craft);
-    }
-
-    fn crew_death(&self) -> Option<(Entity, Resource)> {
-        const CRITICAL: [Resource; 3] = [Resource::Oxygen, Resource::Water, Resource::Energy];
-        let now = self.current_et.get();
-        for (station, s) in self.world.query::<&Station>().iter() {
-            if s.num_crew == 0 {
-                continue;
-            }
-            for r in CRITICAL {
-                let (stored, _) = station_resource_totals(&self.world, station, r, now);
-                let flow = station_resource_amount_flow(&self.world, station, r, false);
-                // Under a second of supply counts as empty, so float rounding at the stop can't delay it
-                if flow < 0.0 && stored / -flow < 1.0 {
-                    return Some((station, r));
-                }
-            }
-        }
-        None
     }
 
     fn sync_models(&mut self, app: &App) {

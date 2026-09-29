@@ -1,9 +1,5 @@
 use crate::{astro::units::SECONDS_PER_DAY, sim::resources::Resource};
 
-pub struct Station {
-    pub num_crew: usize,
-}
-
 impl Resource {
     pub fn long_name(&self) -> &'static str {
         match self {

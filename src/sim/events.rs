@@ -70,6 +70,7 @@ pub enum Event {
 }
 
 pub struct EventQueue {
+    // TODO: Don't make this public. Have methods for peek_next, iter
     pub events: BTreeMap<EphemerisTime, Vec<Event>>,
     version: u64,
 }
@@ -109,3 +110,5 @@ impl Default for EventQueue {
         Self::new()
     }
 }
+
+// TODO: schedule(command), apply(event) -> Vec<SimEffect>
