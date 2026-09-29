@@ -1,11 +1,6 @@
 //! This module is responsible for defining the gameplay scene.
 
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    f64::consts::PI,
-    rc::Rc,
-};
+use std::{cell::Cell, collections::HashMap, f64::consts::PI, rc::Rc};
 
 use apricot::{
     app::{App, Scene},
@@ -20,7 +15,7 @@ use apricot::{
     sphere::Sphere,
 };
 use hecs::{Entity, World};
-use nalgebra_glm::{vec2, vec3, vec4, DVec3, I32Vec2, Vec2, Vec3};
+use nalgebra_glm::{vec2, vec3, vec4, DVec3, Vec2, Vec3};
 use sdl2::keyboard::Scancode;
 
 use crate::{
@@ -28,55 +23,44 @@ use crate::{
         epoch::EphemerisTime,
         maneuver::sphere_of_influence,
         state::State,
-        units::{
-            EARTH_RADII_PER_AU, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR,
-            SUN_MU,
-        },
+        units::{METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR, SUN_MU},
     },
     components::craft::{replace_line_path, spawn_craft, AssociatedEntity},
     container,
     generation::{lexicon::Lexicon, polygon},
-    scenes::{
+    hud::{
         fabricator::{FabricatorAction, FabricatorUi},
+        footer::{Footer, FooterView, TurnMessages},
         game_over::GameOverUi,
         maneuver::ManeuverModal,
+        panel::{self, panel_structure_bits, CommandMessages, PanelCtx},
         sim_speed::SimSpeed,
-        starbox::Starbox,
+        timeline::{MarkKind, TimelineMark},
         transfer::{TransferResult, TransferUi},
+        Binding,
     },
+    scenes::starbox::Starbox,
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
-        docking::{allocate_ports, dock_tree, free_ports, next_free_port, Docking, PortHost},
+        docking::{allocate_ports, next_free_port, Docking, PortHost},
         events::{Event, EventQueue},
         hierarchy::{
-            ancestor_chain, docked_position_system, get_ancestor, landed_system, orbit_system,
-            Landed, Named, Parent,
+            docked_position_system, get_ancestor, landed_system, orbit_system, Landed, Named,
+            Parent,
         },
         industry::{commit_pending_builds, projected_completion, Factory},
         life_support::{crew_death, Station},
-        mission::{Command, ScheduledBurn},
+        mission::Command,
         parts::{id_hash, ModuleSpec, PartDef, PartInventory, PartRegistry},
-        propulsion::{apply_burn, craft_dv, Craft},
+        propulsion::{apply_burn, Craft},
         resources::{
-            add_resource, commit_station, next_reservoir_limits, resource_store_amount,
-            station_r_au, station_resource_amount_flow, station_resource_totals, transfer_resource,
-            Electrolyzer, Miner, Resource, ResourceStore, SolarPanel,
+            add_resource, commit_station, next_reservoir_limits, transfer_resource, Electrolyzer,
+            Miner, Resource, ResourceStore, SolarPanel,
         },
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
-        bind::Binding,
-        button::{Button, Icon},
-        container::{Align, Flow, Justify},
-        hrule::HRule,
-        label::Label,
-        progress_bar::ProgressBar,
-        scroll_container::ScrollContainer,
-        shape::Shape,
-        stat_row::stat_row,
         style::STYLE,
-        timeline::{marks_digest, MarkKind, Timeline, TimelineMark},
-        toggle::Toggle,
     },
 };
 
@@ -128,8 +112,7 @@ pub struct Gameplay {
     /// Used for tab key latch
     prev_tab_state: bool,
 
-    turn_gui_built_for: Option<(I32Vec2, u64, Option<EphemerisTime>)>,
-    turn_gui: Anchor<TurnMessages>,
+    footer: Footer,
     gui: Anchor<CommandMessages>,
     gui_built_for: Option<(Entity, u32, u64, u64)>,
     gui_bindings: Vec<Binding>,
@@ -138,80 +121,19 @@ pub struct Gameplay {
     transfer_ui: TransferUi,
     game_over_ui: GameOverUi,
 
-    // RCs for GUI
+    /// Buttons in the side panel are only clickable while paused
     controls_enabled: Rc<Cell<bool>>,
-    calendar_string: Rc<RefCell<String>>,
-    marks: Rc<RefCell<Vec<TimelineMark>>>,
-    marks_version: u64,
-    transport_icon: Rc<Cell<Icon>>,
 
     // Events and timeline
     event_queue: EventQueue,
     current_et: Rc<Cell<EphemerisTime>>,
     paused: bool,
-    pause_reasons: Vec<TimelineMark>,
     sim_speed: SimSpeed,
     /// Either the next event, or None
     run_until: Option<EphemerisTime>,
 
     // Vec of unit vectors
     starbox: Starbox,
-}
-
-#[derive(Clone)]
-enum TurnMessages {
-    TogglePlay,
-    SpeedUp,
-    SlowDown,
-}
-
-#[derive(Clone)]
-pub enum CommandMessages {
-    OpenFabricator { fabricator_entity: Entity },
-    CancelQueuedFabricator { fabricator_entity: Entity },
-    CancelActiveFabricator { fabricator_entity: Entity },
-    ToggleFabricator { fabricator_entity: Entity },
-    ToggleElectrolyzer { electrolyzer_entity: Entity },
-    ToggleMiner { miner_entity: Entity },
-    CancelCommand { craft: Entity },
-    Undock { entity: Entity },
-    SelectEntity { entity: Entity },
-    OpenManeuver, // TODO: Should store the entity rather than relying on selected
-    OpenTransfer, // TODO: Should store the entity rather than relying on selected
-}
-
-enum DockedView {
-    /// Something is docked to one of our ports, view the guest
-    Guest,
-    /// We're docked to one of their ports, view the host
-    Host,
-}
-
-#[derive(Default)]
-struct Section {
-    pub widgets: Vec<Box<dyn Widget<CommandMessages>>>,
-    pub bindings: Vec<Binding>,
-}
-
-impl Section {
-    fn push(&mut self, w: impl Widget<CommandMessages> + 'static) {
-        self.widgets.push(Box::new(w));
-    }
-
-    fn merge(&mut self, other: Section) {
-        self.widgets.extend(other.widgets);
-        self.bindings.extend(other.bindings);
-    }
-
-    fn into_card(self) -> Section {
-        let c = Container::new(self.widgets)
-            .fixed_width(vec2(280.0, 0.0))
-            .border(STYLE.border, 1.0);
-        Section {
-            widgets: vec![Box::new(c)],
-            bindings: self.bindings,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -473,7 +395,7 @@ impl Scene for Gameplay {
                 }
             }
 
-            for msg in recv_msgs(app, &mut self.turn_gui) {
+            for msg in self.footer.update(app) {
                 match msg {
                     TurnMessages::TogglePlay => {
                         let now = self.current_et.get();
@@ -481,7 +403,7 @@ impl Scene for Gameplay {
                         self.recompute_run_until();
                         self.paused = !self.paused;
                         if !self.paused {
-                            self.pause_reasons.clear();
+                            self.footer.resumed();
                         }
                     }
                     TurnMessages::SpeedUp => self.sim_speed.speed_up(),
@@ -504,13 +426,7 @@ impl Scene for Gameplay {
 
             if self.paused {
                 // Save what stopped us so that we can display it to the player
-                self.pause_reasons = self
-                    .marks
-                    .borrow()
-                    .iter()
-                    .filter(|m| m.t <= t)
-                    .cloned()
-                    .collect();
+                self.footer.stopped_at(t);
 
                 for event in self.event_queue.pop_due(t) {
                     self.handle_event(event, app);
@@ -538,13 +454,7 @@ impl Scene for Gameplay {
         }
 
         // Update GUI stuff
-        let cal = self.current_et.get().short_date();
-        if *self.calendar_string.borrow() != cal {
-            *self.calendar_string.borrow_mut() = cal;
-        }
         self.controls_enabled.set(self.paused);
-        self.transport_icon
-            .set(if self.paused { Icon::Play } else { Icon::Pause });
 
         orbit_system(&mut self.world, self.current_et.get());
         docked_position_system(&mut self.world);
@@ -562,8 +472,7 @@ impl Scene for Gameplay {
         self.line_path_system(app);
         self.sync_models(app);
         let marks = self.build_marks();
-        self.marks_version = marks_digest(&marks);
-        *self.marks.borrow_mut() = marks;
+        self.footer.set_marks(marks);
         self.sync_panel(app);
 
         // Delete anything we want deleted
@@ -699,7 +608,7 @@ impl Scene for Gameplay {
 
         // Draw GUI
         self.gui.render(app);
-        self.turn_gui.render(app);
+        self.footer.render(app);
         self.fabricator_ui.render(app);
         self.maneuver_ui.render(app);
         self.transfer_ui.render(app);
@@ -1175,33 +1084,25 @@ impl Gameplay {
             distance: 64.0,
             prev_tab_state: false,
 
-            turn_gui_built_for: None,
+            footer: Footer::new(),
             gui: Anchor::new(Box::new(container![]), AnchorPoint::TopRight),
             gui_built_for: None,
             gui_bindings: vec![],
-            turn_gui: Anchor::new(Box::new(container![]), AnchorPoint::BottomLeft),
             fabricator_ui: FabricatorUi::new(),
             maneuver_ui: ManeuverModal::new(app),
             transfer_ui: TransferUi::new(),
             game_over_ui: GameOverUi::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
-            calendar_string: Rc::new(RefCell::new(String::new())),
-            marks: Rc::new(RefCell::new(vec![])),
-            marks_version: 0,
-            transport_icon: Rc::new(Cell::new(Icon::Play)),
 
             current_et: Rc::new(Cell::new(EphemerisTime::epoch())),
             event_queue,
             paused: true,
-            pause_reasons: vec![],
             sim_speed: SimSpeed::new(),
             run_until: None,
 
             starbox: Starbox::new(9000, vec3(1.0, 2.0, 4.0), 0.4),
         };
-
-        *retval.calendar_string.borrow_mut() = retval.current_et.get().short_date();
 
         retval.sync_panel(app);
 
@@ -1264,1093 +1165,6 @@ impl Gameplay {
         }
     }
 
-    fn rebuild_gui(&self, app: &App) -> (Anchor<CommandMessages>, Vec<Binding>) {
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
-        let mut bindings = vec![];
-        let selected = self.selection.selected_entity();
-
-        if let Some(selected) = selected {
-            let section = self.build_selection_widgets(selected, app);
-            widgets = section.widgets;
-            bindings = section.bindings;
-        }
-
-        const MARGIN: f32 = 16.0;
-
-        let footer_h = self.turn_gui.size().y;
-        let panel_h = (app.window_size.y as f32 - MARGIN * 3.0 - footer_h).max(0.0);
-
-        let mut anchor = Anchor::new(
-            Box::new(ScrollContainer::new(
-                Vec2::new(300.0, panel_h),
-                Box::new(
-                    Container::new(widgets)
-                        .cross_align(Align::Start)
-                        .background_color(STYLE.surface)
-                        .border(STYLE.border, 1.0)
-                        .padding(vec2(8.0, 8.0))
-                        .min_size(Vec2::new(300.0, panel_h)),
-                ),
-            )),
-            AnchorPoint::TopRight,
-        )
-        .margin(vec2(MARGIN, MARGIN));
-        anchor.reposition(app);
-        (anchor, bindings)
-    }
-
-    fn rebuild_turn_gui(&self, app: &App) -> Anchor<TurnMessages> {
-        let mut turn_widgets: Vec<Box<dyn Widget<TurnMessages>>> = vec![];
-        turn_widgets.extend(self.build_footer_widgets(app));
-        const MARGIN: f32 = 16.0;
-
-        let mut anchor = Anchor::new(
-            Box::new(
-                Container::new(turn_widgets)
-                    .padding(vec2(0.0, 0.0))
-                    .gap(MARGIN)
-                    .cross_align(Align::End)
-                    .flow(Flow::Horizontal),
-            ),
-            AnchorPoint::BottomRight,
-        )
-        .margin(vec2(MARGIN, MARGIN));
-        anchor.reposition(app);
-        anchor
-    }
-
-    fn build_footer_widgets(&self, app: &App) -> Vec<Box<dyn Widget<TurnMessages>>> {
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        const WIDTH: f32 = 300.0;
-        const LIST_H: f32 = 85.0;
-
-        let now = self.current_et.get();
-        let marks = self.marks.borrow();
-        let mut upcoming: Vec<&TimelineMark> = marks.iter().filter(|m| m.t > now).collect();
-        upcoming.sort_by_key(|m| m.t);
-
-        let rows = self
-            .pause_reasons
-            .iter()
-            .map(|m| Self::event_row(m, true, app))
-            .chain(upcoming.iter().map(|m| Self::event_row(m, false, app)))
-            .collect();
-
-        let turn_controls = Container::new(vec![
-            Box::new(ScrollContainer::new(
-                Vec2::new(WIDTH - 16.0, LIST_H),
-                Box::new(Container::new(rows).padding(Vec2::zeros()).gap(2.0)),
-            )),
-            Box::new(HRule::new(STYLE.border, 1.0, WIDTH - 16.0)),
-            Box::new(
-                Container::new(vec![
-                    Box::new(
-                        Button::icon_bound(vec2(30.0, 30.0), self.transport_icon.clone())
-                            .use_style_accented(&STYLE)
-                            .on_click(TurnMessages::TogglePlay),
-                    ),
-                    Box::new(
-                        Button::icon(vec2(30.0, 30.0), Icon::SlowForward)
-                            .use_style_accented(&STYLE)
-                            .bound_active(self.sim_speed.can_slow_down.clone())
-                            .on_click(TurnMessages::SlowDown),
-                    ),
-                    Box::new(
-                        Button::icon(vec2(30.0, 30.0), Icon::FastForward)
-                            .use_style_accented(&STYLE)
-                            .bound_active(self.sim_speed.can_speed_up.clone())
-                            .on_click(TurnMessages::SpeedUp),
-                    ),
-                    Box::new(
-                        Container::new(vec![Box::new(
-                            Label::bound(self.sim_speed.sim_speed_str.clone()).font(font, app),
-                        )])
-                        .background_color(STYLE.surface)
-                        .border(STYLE.border, 1.0)
-                        .min_size(vec2(0.0, 30.0)),
-                    ),
-                    Box::new(
-                        Container::new(vec![Box::new(
-                            Label::bound(self.calendar_string.clone()).font(font, app),
-                        )])
-                        .background_color(STYLE.surface)
-                        .border(STYLE.border, 1.0)
-                        .min_size(vec2(0.0, 30.0)),
-                    ),
-                ])
-                .flow(Flow::Horizontal)
-                .cross_align(Align::Center)
-                .padding(vec2(0.0, 0.0))
-                .gap(0.0),
-            ),
-        ])
-        .background_color(STYLE.surface)
-        .border(STYLE.border, 1.0)
-        .flow(Flow::Vertical)
-        .cross_align(Align::Center)
-        .fixed_size(Vec2::new(300.0, 150.0));
-
-        let remaining = app.window_size.x as f32 - turn_controls.size().x - 16.0 - 32.0;
-
-        vec![
-            Box::new(
-                Timeline::new(self.current_et.clone(), remaining, self.marks.clone())
-                    .use_style(&STYLE),
-            ),
-            Box::new(turn_controls),
-        ]
-    }
-
-    fn event_row(mark: &TimelineMark, accented: bool, app: &App) -> Box<dyn Widget<TurnMessages>> {
-        let font = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let (mesh, rot) = mark.kind.shape(app);
-
-        const WIDTH: f32 = 300.0;
-
-        let (subject_color, detail_color) = match (accented, mark.kind) {
-            (true, MarkKind::Critical) => (STYLE.negative, STYLE.text_secondary),
-            (true, _) => (STYLE.positive, STYLE.text_secondary),
-            (false, _) => (STYLE.text, STYLE.text_secondary),
-        };
-
-        let left = container!(
-            Shape::new(vec2(28.0, 28.0), mesh, rot, mark.kind.color(), 10.0),
-            container!(
-                container!(
-                    Label::new(mark.subject.clone())
-                        .font(font, app)
-                        .color(subject_color),
-                    Label::new(mark.t.short_date()).font(font, app),
-                )
-                .flow(Flow::Horizontal)
-                .justify(Justify::SpaceBetween)
-                .fixed_size(vec2(WIDTH - 52.0, 16.0))
-                .padding(Vec2::zeros())
-                .gap(0.0),
-                Label::new(mark.detail.clone())
-                    .font(font, app)
-                    .color(detail_color)
-            )
-            .padding(Vec2::zeros())
-            .gap(0.0)
-        )
-        .flow(Flow::Horizontal)
-        .cross_align(Align::Start)
-        .padding(Vec2::zeros())
-        .gap(6.0);
-
-        Box::new(
-            container!(left)
-                .flow(Flow::Horizontal)
-                .justify(Justify::SpaceBetween)
-                .cross_align(Align::Start)
-                .padding(Vec2::zeros())
-                .fixed_width(vec2(WIDTH - 16.0, 0.0)),
-        )
-    }
-
-    fn build_selection_widgets(&self, selected: Entity, app: &App) -> Section {
-        let mut out = Section::default();
-        const WIDTH: f32 = 280.0;
-        let font_big = app.renderer.get_font_id_from_name("font-big").unwrap();
-
-        out.push(
-            Container::new(self.build_crumbs(selected, app))
-                .flow(Flow::Horizontal)
-                .cross_align(Align::Center)
-                .padding(vec2(0.0, 0.0)),
-        );
-
-        let name = self
-            .world
-            .get::<&Named>(selected)
-            .map(|n| n.name.clone())
-            .unwrap_or_else(|_| "???".into());
-        out.push(Label::new(name).font(font_big, app));
-        out.push(HRule::new(STYLE.border, 1.0, WIDTH));
-
-        if self
-            .world
-            .entity(selected)
-            .is_ok_and(|e| e.has::<Craft>() && !e.has::<Station>())
-        {
-            out.merge(self.craft_selection(selected, app));
-        } else if self.world.get::<&Body>(selected).is_ok() {
-            out.merge(self.body_selection(selected, app));
-        }
-
-        if self.world.get::<&PortHost>(selected).is_ok() {
-            out.merge(self.module_list(selected, app));
-        }
-
-        out
-    }
-
-    fn craft_selection(&self, selected: Entity, app: &App) -> Section {
-        let mut out = Section::default();
-
-        const WIDTH: f32 = 280.0;
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-
-        let craft_dv_text = Rc::new(RefCell::new(String::new()));
-
-        if let Ok(_) = self.world.get::<&Docking>(selected) {
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Undock")
-                    .use_style(&STYLE)
-                    .bound_active(self.controls_enabled.clone())
-                    .on_click(CommandMessages::Undock { entity: selected }),
-            );
-        } else {
-            out.merge(self.mission_section(selected, app));
-        }
-
-        out.push(Label::new("ENGINE").font(font_small_bold, app));
-
-        out.push(
-            Label::bound(craft_dv_text.clone())
-                .font(font, app)
-                .color(STYLE.text),
-        );
-
-        out.bindings.push(Binding::new({
-            let craft_dv_text = craft_dv_text.clone();
-            let now = self.current_et.clone();
-            move |world: &World| {
-                let craft_dv = craft_dv(world, selected, now.get());
-                let s = format!("Total dv: {:.0} m/s", craft_dv);
-                if *craft_dv_text.borrow() != s {
-                    *craft_dv_text.borrow_mut() = s;
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn mission_section(&self, selected: Entity, app: &App) -> Section {
-        let mut out = Section::default();
-
-        const WIDTH: f32 = 280.0;
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font_small_italic = app
-            .renderer
-            .get_font_id_from_name("font-small-italic")
-            .unwrap();
-
-        let craft = self.world.get::<&Craft>(selected).unwrap();
-
-        let is_idle = craft.command.is_none();
-
-        out.push(Label::new("MISSION").font(font_small_bold, app));
-
-        if let Some(command) = &craft.command {
-            let (verb, target) = command.title_parts();
-            let name = self
-                .world
-                .get::<&Named>(target)
-                .ok()
-                .map(|s| s.name.clone())
-                .unwrap_or_else(|| "???".into());
-
-            let title = format!("{verb} {name}").to_uppercase();
-
-            let header = if craft.command_scheduled {
-                title
-            } else {
-                format!("{} - QUEUED", title)
-            };
-            out.push(
-                Label::new(header)
-                    .font(font_small_bold, app)
-                    .color(STYLE.accent),
-            );
-
-            for burn in command.burn_schedule() {
-                out.merge(self.burn_card(&burn, app));
-            }
-
-            if !craft.command_scheduled {
-                out.push(
-                    Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Cancel Mission")
-                        .use_style(&STYLE)
-                        .bound_active(self.controls_enabled.clone())
-                        .on_click(CommandMessages::CancelCommand { craft: selected }),
-                );
-            }
-        } else {
-            out.push(
-                Label::new("NO MISSION ASSIGNED")
-                    .font(font_small_italic, app)
-                    .color(STYLE.text_disabled),
-            );
-        }
-
-        if is_idle {
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Plan Mission...")
-                    .use_style_accented(&STYLE)
-                    .on_click(CommandMessages::OpenManeuver),
-            )
-        };
-        out.push(HRule::new(STYLE.border, 1.0, WIDTH));
-
-        out
-    }
-
-    fn burn_card(&self, burn: &ScheduledBurn, app: &App) -> Section {
-        const WIDTH: f32 = 280.0;
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-
-        let now = self.current_et.get();
-        let done = now >= burn.t();
-        let (title_color, date_color) = if done {
-            (STYLE.positive, STYLE.positive)
-        } else {
-            (STYLE.text, STYLE.text_secondary)
-        };
-
-        let countdown = Rc::new(RefCell::new(String::new()));
-
-        let mut out = Section::default();
-        out.push(
-            Container::new(vec![
-                Box::new(
-                    Container::new(vec![
-                        Box::new(
-                            Label::new(burn.desc)
-                                .font(font_small_bold, app)
-                                .color(title_color),
-                        ),
-                        Box::new(
-                            Label::new(format!("{:.0} m/s", burn.dv))
-                                .font(font_small_bold, app)
-                                .color(title_color),
-                        ),
-                    ])
-                    .flow(Flow::Horizontal)
-                    .justify(Justify::SpaceBetween)
-                    .padding(Vec2::zeros())
-                    .fixed_width(vec2(WIDTH - 16.0, 0.0)),
-                ),
-                Box::new(
-                    Label::new(burn.t().as_calendar())
-                        .font(font, app)
-                        .color(date_color),
-                ),
-                Box::new(
-                    Label::bound(countdown.clone())
-                        .font(font, app)
-                        .color(date_color),
-                ),
-            ])
-            .border(STYLE.border, 1.0)
-            .fixed_width(vec2(WIDTH, 0.0))
-            .padding(vec2(8.0, 8.0)),
-        );
-
-        let current_et = self.current_et.clone();
-        out.bindings.push(Binding::new({
-            let burn_t = burn.t();
-            move |_world| {
-                let now = current_et.get();
-                let s = if now >= burn_t {
-                    "DONE".into()
-                } else {
-                    format!("T- {}", (burn_t - now).short_duration())
-                };
-                if *countdown.borrow() != s {
-                    *countdown.borrow_mut() = s;
-                }
-            }
-        }));
-        out
-    }
-
-    fn body_selection(&self, selected: Entity, app: &App) -> Section {
-        let mut out = Section::default();
-        const WIDTH: f32 = 280.0;
-
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-
-        let body = self.world.get::<&Body>(selected).unwrap();
-        let inventory = self.world.get::<&PartInventory>(selected).unwrap();
-
-        let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
-
-        if let Ok(parent) = self.world.get::<&Parent>(selected) {
-            let state = self.world.get::<&State>(selected).unwrap();
-            let parent_body = self.world.get::<&Body>(parent.id).unwrap();
-
-            let orbits_star = self.world.get::<&Parent>(parent.id).is_err();
-            let dist = |er: f64| {
-                if orbits_star {
-                    format!("{:.2} AU", er / EARTH_RADII_PER_AU)
-                } else {
-                    format!("{:.0} km", er * KM_PER_EARTH_RADIUS)
-                }
-            };
-
-            let (apo, peri) = state.apsides(parent_body.mu);
-            let ecc = state.ecc(parent_body.mu);
-            let inc = state.inclination();
-
-            let orbit_rows = [
-                ("APOAPSIS", apo.map_or("-".into(), dist)),
-                ("PERIAPSIS", dist(peri)),
-                ("ECCENTRICITY", format!("{:.3}", ecc)),
-                ("INCLINATION", format!("{:.1} deg", inc.to_degrees())),
-            ];
-
-            widgets.extend(orbit_rows.iter().map(|(k, v)| {
-                Box::new(stat_row(k, v.to_string(), STYLE.text, WIDTH, app))
-                    as Box<dyn Widget<CommandMessages>>
-            }));
-            widgets.push(Box::new(HRule::new(STYLE.border, 1.0, WIDTH)));
-        }
-
-        let body_rows = [
-            // TODO: Support earth symbol and exponents in apricot's font cache
-            ("RADIUS", format!("{:.1} ER", body.body_radius)),
-            ("MASS", format!("{:.3} EM", body.mass())),
-            ("DENSITY", format!("{:.1} g/cm^3", body.density)),
-            ("DAY", format!("{:.1} hrs", body.rotation_period_hours)),
-            // TODO: Replace the following with sensor estimates
-            ("PRESSURE", String::from("-")),
-            ("TEMPERATURE", String::from("-")),
-            ("CORE MASS", String::from("-")),
-            ("MAGNETIC", String::from("-")),
-        ];
-
-        // let state = self.world.get::<&State>(selected).unwrap();
-        // Know: name, radius, mass, density, orbital radius, rotation in hours
-        // Have to find: atmos press, temp, core mass fraction, magnetic field
-        widgets.extend(body_rows.iter().map(|(k, v)| {
-            Box::new(stat_row(k, v.to_string(), STYLE.text, WIDTH, app))
-                as Box<dyn Widget<CommandMessages>>
-        }));
-
-        // Extend with inventory info
-        widgets.extend(inventory.parts.iter().filter_map(|(part_id, quantity)| {
-            if *quantity > 0 {
-                Some(
-                    Box::new(Label::new(format!("{}: {}", part_id, quantity)).font(font, app))
-                        as Box<dyn Widget<CommandMessages>>,
-                )
-            } else {
-                None
-            }
-        }));
-        out.widgets = widgets;
-
-        let children: Vec<Entity> = self
-            .world
-            .query::<(&Parent, &Body)>()
-            .iter()
-            .filter(|(_, (p, _))| p.id == selected)
-            .map(|(e, _)| e)
-            .collect(); // TODO: We don't have to collect just to check for is_emtpy, do we?
-
-        if !children.is_empty() {
-            let has_parent = self.world.get::<&Parent>(selected).is_ok();
-            out.push(HRule::new(STYLE.border, 1.0, WIDTH));
-            out.push(
-                Label::new(if has_parent { "MOONS" } else { "PLANETS" }).font(font_small_bold, app),
-            );
-            out.widgets.extend(children.iter().filter_map(|e| {
-                let child_name = self.world.get::<&Named>(*e).ok()?;
-                Some(Box::new(
-                    Button::fit(&child_name.name, font, app, vec2(0.0, 0.0))
-                        .use_style_link(&STYLE)
-                        .on_click(CommandMessages::SelectEntity { entity: *e }),
-                ) as Box<dyn Widget<CommandMessages>>)
-            }));
-        }
-
-        let craft: Vec<Entity> = self
-            .world
-            .query::<(&Parent, &Craft)>()
-            .iter()
-            .filter(|(_, (p, _))| p.id == selected)
-            .map(|(e, _)| e)
-            .collect(); // TODO: We don't have to collect just to check for is_emtpy, do we?
-
-        if !craft.is_empty() {
-            out.push(HRule::new(STYLE.border, 1.0, WIDTH));
-            out.push(Label::new("CRAFT").font(font_small_bold, app));
-            out.widgets.extend(craft.iter().filter_map(|e| {
-                let child_name = self.world.get::<&Named>(*e).ok()?;
-                Some(Box::new(
-                    Button::fit(&child_name.name, font, app, vec2(0.0, 0.0))
-                        .use_style_link(&STYLE)
-                        .on_click(CommandMessages::SelectEntity { entity: *e }),
-                ) as Box<dyn Widget<CommandMessages>>)
-            }));
-        }
-
-        out
-    }
-
-    fn build_crumbs(&self, selected: Entity, app: &App) -> Vec<Box<dyn Widget<CommandMessages>>> {
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let ancestors = ancestor_chain(&self.world, selected); // outermost first
-        let mut crumbs: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
-        for (i, e) in ancestors.iter().enumerate() {
-            if i > 0 {
-                crumbs.push(Box::new(Label::new(">").font(font, app)));
-            }
-            let name = self.world.get::<&Named>(*e).unwrap().name.clone();
-            crumbs.push(Box::new(
-                Button::fit(name, font, app, vec2(0.0, 0.0))
-                    .use_style_link(&STYLE)
-                    .on_click(CommandMessages::SelectEntity { entity: *e }),
-            ));
-        }
-        crumbs.reverse();
-        crumbs
-    }
-
-    fn module_list(&self, station: Entity, app: &App) -> Section {
-        let mut out = Section::default();
-        const WIDTH: f32 = 280.0;
-
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-
-        let total = self.world.get::<&PortHost>(station).unwrap().ports;
-        let used = total - free_ports(&self.world, station);
-
-        let number_docked = dock_tree(&self.world, station).len();
-
-        if number_docked > 1 {
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Transfer")
-                    .use_style(&STYLE)
-                    .bound_active(self.controls_enabled.clone())
-                    .on_click(CommandMessages::OpenTransfer),
-            );
-        }
-
-        out.push(Label::new(format!("PORTS ({used}/{total})")).font(font_small_bold, app));
-
-        for i in 0..total {
-            out.merge(self.module_section(station, i, app).into_card());
-        }
-
-        out
-    }
-
-    fn module_section(&self, host: Entity, i: u32, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font_small_italic = app
-            .renderer
-            .get_font_id_from_name("font-small-italic")
-            .unwrap();
-
-        let mut out = Section::default();
-
-        if let Some(module) = self
-            .world
-            .query::<&Docking>()
-            .iter()
-            .find(|(_, docking)| docking.host == host && docking.host_port == i)
-            .map(|(e, _)| e)
-        {
-            if self.world.get::<&SolarPanel>(module).is_ok() {
-                out.merge(Self::solar_panel_section(module, app));
-            } else if self.world.get::<&ResourceStore>(module).is_ok() {
-                out.merge(self.resource_store_section(module, app));
-            } else if self.world.get::<&Factory>(module).is_ok() {
-                out.merge(self.fabricator_section(module, app));
-            } else if self.world.get::<&Electrolyzer>(module).is_ok() {
-                out.merge(self.electrolyzer_section(module, app));
-            } else if self.world.get::<&Miner>(module).is_ok() {
-                out.merge(self.miner_section(module, app));
-            } else if self.world.get::<&Craft>(module).is_ok() {
-                out.merge(self.docked_craft_section(host, module, DockedView::Guest, app));
-            } else {
-                out.push(Label::new("Unknown module!!!").font(font_small_bold, app));
-            }
-        } else if let Some(docking) = self
-            .world
-            .get::<&Docking>(host)
-            .ok()
-            .filter(|docking| docking.own_port == i)
-        {
-            out.merge(self.docked_craft_section(docking.host, host, DockedView::Host, app));
-        } else if let Some((fab, part_id)) = self
-            .world
-            .query::<(&Docking, &Factory)>()
-            .iter()
-            .find_map(|(e, (d, f))| {
-                if d.host != host || f.reserved_port != Some(i) {
-                    return None;
-                }
-                // prefer the active job, both can be Some!
-                let part_id = f
-                    .current_job
-                    .as_ref()
-                    .map(|j| j.part_id)
-                    .or(f.pending_job)?;
-                Some((e, part_id))
-            })
-        {
-            out.merge(self.reserved_port_section(fab, part_id, app));
-        } else {
-            out.push(Label::new("Available").font(font_small_italic, app));
-        }
-
-        out
-    }
-
-    fn solar_panel_section(module: Entity, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        let text = Rc::new(RefCell::new(String::new()));
-
-        let mut out = Section::default();
-
-        out.push(Label::new("SOLAR PANEL ARRAY").font(font_small_bold, app));
-        out.push(Label::bound(text.clone()).font(font, app));
-
-        out.bindings.push(Binding::new({
-            let text = text.clone();
-            let last = Cell::new(f32::NAN);
-            move |world: &World| {
-                let station = world.get::<&Parent>(module).unwrap().id;
-                let r_au = station_r_au(world, station);
-                let Ok(panel) = world.get::<&SolarPanel>(module) else {
-                    return;
-                };
-                let kw = panel.output_w(r_au) * Resource::Energy.presentation_scalars().1;
-                if kw != last.get() {
-                    last.set(kw);
-                    *text.borrow_mut() = format!("{kw:+.2} kW")
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn resource_store_section(&self, module: Entity, app: &App) -> Section {
-        const WIDTH: f32 = 280.0;
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-
-        // Tank info
-        let tank = self.world.get::<&ResourceStore>(module).unwrap();
-
-        out.push(
-            Label::new(tank.resource.long_name().to_uppercase().to_string())
-                .font(font_small_bold, app),
-        );
-
-        let mass = Rc::new(RefCell::new(String::new()));
-        let mass_percentage = Rc::new(Cell::new(0.0));
-        let time_to_zero = Rc::new(RefCell::new(String::new()));
-        let et = self.current_et.clone();
-
-        out.push(Label::bound(mass.clone()).font(font, app).color(STYLE.text));
-        out.push(
-            ProgressBar::new(vec2(WIDTH - 8.0 * 2.0, 12.0))
-                .use_style(&STYLE)
-                .bind(mass_percentage.clone()),
-        );
-        out.push(
-            Label::bound(time_to_zero.clone())
-                .font(font, app)
-                .color(STYLE.text),
-        );
-
-        out.bindings.push(Binding::new({
-            let mass = mass.clone();
-            let last_m = Cell::new(f32::NAN);
-            let last_mdot = Cell::new(f32::NAN);
-            move |world: &World| {
-                let station = world.get::<&Parent>(module).unwrap().id;
-                let Ok(t) = world.get::<&ResourceStore>(module) else {
-                    return;
-                };
-
-                let amount = resource_store_amount(world, module, et.get());
-                let rate = station_resource_amount_flow(world, station, t.resource, true);
-
-                let until = |secs: f32| EphemerisTime::from_secs(secs as f64).short_duration();
-
-                let (unit, dunit) = t.resource.presentation_units();
-                let (scale, dscale) = t.resource.presentation_scalars();
-
-                let m = amount * scale;
-                let mdot = rate * dscale;
-                let capacity = t.capacity * scale;
-
-                if m != last_m.get() || mdot != last_mdot.get() {
-                    last_m.set(m);
-                    last_mdot.set(mdot);
-                    *mass.borrow_mut() = format!(
-                        "{}: {:.0}/{:.0} {} ({:+.2} {})",
-                        t.resource.short_name(),
-                        m,
-                        capacity,
-                        unit,
-                        mdot,
-                        dunit
-                    );
-                    mass_percentage.set(m / capacity);
-                    *time_to_zero.borrow_mut() = if m == 0.0 {
-                        "Empty".into()
-                    } else if rate < 0.0 {
-                        format!("Empty in {}", until(amount / -rate))
-                    } else if rate > 0.0 && amount < t.capacity {
-                        format!("Full in {}", until((t.capacity - amount) / rate))
-                    } else if rate > 0.0 {
-                        "Full - venting".into()
-                    } else if amount >= t.capacity {
-                        "Full".into()
-                    } else {
-                        "Stable".into()
-                    };
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn fabricator_section(&self, module: Entity, app: &App) -> Section {
-        const WIDTH: f32 = 280.0;
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-
-        let factory = self.world.get::<&Factory>(module).unwrap();
-        let enabled = Rc::new(Cell::new(true));
-        let progress = Rc::new(Cell::new(0.0));
-        let countdown = Rc::new(RefCell::new(String::new()));
-        let power_draw = Rc::new(RefCell::new(String::new()));
-        let now = self.current_et.get();
-
-        out.push(Label::new("FABRICATOR").font(font_small_bold, app));
-        out.push(Label::bound(power_draw.clone()).font(font, app));
-
-        if let Some(job) = &factory.current_job {
-            let part_name = &self.parts.get(job.part_id).unwrap().name;
-
-            let ready_text = match job.completion_et(&factory, now) {
-                Some(et) => format!("Ready: {}", et.as_calendar()),
-                None => String::from("Ready:"),
-            };
-
-            out.push(Label::new(format!("Building {}", part_name)).font(font, app));
-            out.push(
-                Toggle::new("Enabled:")
-                    .bind(enabled.clone())
-                    .use_style(&STYLE)
-                    .on_toggle(CommandMessages::ToggleFabricator {
-                        fabricator_entity: module,
-                    })
-                    .bound_active(self.controls_enabled.clone())
-                    .font(font, app),
-            );
-            out.push(
-                ProgressBar::new(vec2(WIDTH - 8.0 * 2.0, 12.0))
-                    .use_style(&STYLE)
-                    .bind(progress.clone()),
-            );
-            out.push(Label::new(ready_text).font(font, app));
-            out.push(Label::bound(countdown.clone()).font(font, app));
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
-                    .use_style(&STYLE)
-                    .bound_active(self.controls_enabled.clone())
-                    .on_click(CommandMessages::CancelActiveFabricator {
-                        fabricator_entity: module,
-                    }),
-            );
-
-            out.bindings.push(Binding::new({
-                let current_et = self.current_et.clone();
-                move |world: &World| {
-                    let factory = world.get::<&Factory>(module).unwrap();
-                    let job = factory.current_job.as_ref().unwrap();
-                    progress.set(job.progress(&factory, current_et.get()) as f32);
-                    let now = current_et.get();
-                    let completion_et = job.completion_et(&factory, now);
-                    let s = match completion_et {
-                        Some(et) if now >= et => "DONE".into(),
-                        Some(et) => format!("T- {}", (et - now).short_duration()),
-                        None => String::from("T-"),
-                    };
-                    if *countdown.borrow() != s {
-                        *countdown.borrow_mut() = s;
-                    }
-                }
-            }))
-        } else if let Some(part_id) = factory.pending_job {
-            let part = self.parts.get(part_id).unwrap();
-
-            let build_time_secs = part.cost.energy_joules / factory.power_watts;
-            let completion = now + EphemerisTime::from_secs(build_time_secs as f64);
-
-            out.push(Label::new(format!("Queued: {}", part.name)).font(font, app));
-            out.push(Label::new(format!("Ready {}", completion.as_calendar())).font(font, app));
-            out.push(Label::bound(countdown.clone()).font(font, app));
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
-                    .use_style(&STYLE)
-                    .bound_active(self.controls_enabled.clone())
-                    .on_click(CommandMessages::CancelQueuedFabricator {
-                        fabricator_entity: module,
-                    }),
-            );
-
-            out.bindings.push(Binding::new({
-                let current_et = self.current_et.clone();
-                move |_world: &World| {
-                    let now = current_et.get();
-                    let s = if now >= completion {
-                        "DONE".into()
-                    } else {
-                        format!("T- {}", (completion - now).short_duration())
-                    };
-                    if *countdown.borrow() != s {
-                        *countdown.borrow_mut() = s;
-                    }
-                }
-            }))
-        } else {
-            out.push(
-                Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Build...")
-                    .use_style_accented(&STYLE)
-                    .bound_active(self.controls_enabled.clone())
-                    .on_click(CommandMessages::OpenFabricator {
-                        fabricator_entity: module,
-                    }),
-            );
-        }
-
-        out.bindings.push(Binding::new({
-            let text = power_draw.clone();
-            let enabled = enabled.clone();
-            move |world: &World| {
-                if let Ok(fab) = world.get::<&Factory>(module) {
-                    enabled.set(fab.enabled);
-                    let kw = if (fab.enabled && fab.current_job.is_some())
-                        || fab.pending_job.is_some()
-                    {
-                        -fab.power_watts
-                    } else {
-                        0.0
-                    } * Resource::Energy.presentation_scalars().1;
-                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn electrolyzer_section(&self, module: Entity, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-
-        let text = Rc::new(RefCell::new(String::new()));
-        let enabled = Rc::new(Cell::new(false));
-
-        out.push(Label::new("ELECTROLYZER").font(font_small_bold, app));
-        out.push(
-            Toggle::new("Enabled:")
-                .bind(enabled.clone())
-                .use_style(&STYLE)
-                .on_toggle(CommandMessages::ToggleElectrolyzer {
-                    electrolyzer_entity: module,
-                })
-                .bound_active(self.controls_enabled.clone())
-                .font(font, app),
-        );
-        out.push(Label::bound(text.clone()).font(font, app));
-
-        out.bindings.push(Binding::new({
-            let text = text.clone();
-            let enabled = enabled.clone();
-            move |world: &World| {
-                if let Ok(el) = world.get::<&Electrolyzer>(module) {
-                    enabled.set(el.enabled);
-                    let kw = if el.enabled { -el.power_watts } else { 0.0 }
-                        * Resource::Energy.presentation_scalars().1;
-                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn miner_section(&self, module: Entity, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-
-        let text = Rc::new(RefCell::new(String::new()));
-        let enabled = Rc::new(Cell::new(false));
-
-        out.push(Label::new("MINER").font(font_small_bold, app));
-        out.push(
-            Toggle::new("Enabled:")
-                .bind(enabled.clone())
-                .use_style(&STYLE)
-                .on_toggle(CommandMessages::ToggleMiner {
-                    miner_entity: module,
-                })
-                .bound_active(self.controls_enabled.clone())
-                .font(font, app),
-        );
-        out.push(Label::bound(text.clone()).font(font, app));
-
-        out.bindings.push(Binding::new({
-            let text = text.clone();
-            let enabled = enabled.clone();
-            move |world: &World| {
-                if let Ok(miner) = world.get::<&Miner>(module) {
-                    enabled.set(miner.enabled);
-                    let kw = if miner.enabled {
-                        -miner.power_watts
-                    } else {
-                        0.0
-                    } * Resource::Energy.presentation_scalars().1;
-                    *text.borrow_mut() = format!("Power draw: {kw:-.2} kW")
-                }
-            }
-        }));
-
-        out
-    }
-
-    fn docked_craft_section(
-        &self,
-        host: Entity,
-        guest: Entity,
-        view: DockedView,
-        app: &App,
-    ) -> Section {
-        const WIDTH: f32 = 280.0;
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-
-        let (header, other) = match view {
-            DockedView::Guest => (format!("DOCKED"), guest),
-            DockedView::Host => (format!("DOCKED TO"), host),
-        };
-
-        out.push(Label::new(header).font(font_small_bold, app));
-
-        let name = &self.world.get::<&Named>(other).unwrap().name;
-        out.push(
-            Button::fit(name, font, app, vec2(0.0, 0.0))
-                .use_style_link(&STYLE)
-                .on_click(CommandMessages::SelectEntity { entity: other }),
-        );
-        out.push(
-            Button::<CommandMessages>::text(vec2(WIDTH - 16.0, 30.0), "Undock")
-                .use_style(&STYLE)
-                .bound_active(self.controls_enabled.clone())
-                .on_click(CommandMessages::Undock { entity: guest }),
-        );
-
-        out
-    }
-
-    fn reserved_port_section(&self, fab: Entity, part_id: u64, app: &App) -> Section {
-        let font_small_bold = app
-            .renderer
-            .get_font_id_from_name("font-small-bold")
-            .unwrap();
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-
-        let mut out = Section::default();
-        let name = self.parts.get(part_id).map_or("???", |d| d.name.as_str());
-
-        out.push(Label::new("RESERVED").font(font_small_bold, app));
-        out.push(Label::new(format!("Building {name}")).font(font, app));
-
-        let countdown = Rc::new(RefCell::new(String::new()));
-        out.push(Label::bound(countdown.clone()).font(font, app));
-
-        out.bindings.push(Binding::new({
-            let current_et = self.current_et.clone();
-            move |world: &World| {
-                let Ok(factory) = world.get::<&Factory>(fab) else {
-                    return;
-                };
-                let now = current_et.get();
-                let s = match factory.current_job.as_ref() {
-                    None => String::from("Queued"),
-                    Some(job) => match job.completion_et(&factory, now) {
-                        Some(et) if now >= et => String::from("DONE"),
-                        Some(et) => format!("T- {}", (et - now).short_duration()),
-                        None => String::from("T-"),
-                    },
-                };
-                if *countdown.borrow() != s {
-                    *countdown.borrow_mut() = s;
-                }
-            }
-        }));
-
-        out
-    }
-
     fn gui_structure_key(&self) -> Option<(Entity, u32, u64, u64)> {
         let sel = self.selection.selected_entity()?;
         let gen = self
@@ -2363,29 +1177,8 @@ impl Gameplay {
             sel,
             gen,
             self.event_queue.version(),
-            self.panel_structure_bits(),
+            panel_structure_bits(&self.world),
         ))
-    }
-
-    fn panel_structure_bits(&self) -> u64 {
-        let mut h = 0u64;
-        for (e, f) in self.world.query::<&Factory>().iter() {
-            let s = match (&f.current_job, f.pending_job) {
-                (Some(_), _) => 2,
-                (None, Some(_)) => 1,
-                _ => 0,
-            };
-            h ^= (e.id() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ s;
-        }
-        for (e, c) in self.world.query::<&Craft>().iter() {
-            let s = match (&c.command, c.command_scheduled) {
-                (Some(_), true) => 2,
-                (Some(_), false) => 1,
-                _ => 0,
-            };
-            h ^= (e.id() as u64).wrapping_mul(0x1656_67B1_9E37_79F9) ^ s;
-        }
-        h
     }
 
     fn undock(&mut self, craft: Entity, app: &App) {
@@ -3595,31 +2388,38 @@ impl Gameplay {
     }
 
     fn sync_panel(&mut self, app: &App) {
-        let turn_key = Some((
-            app.window_size,
-            self.marks_version,
-            self.pause_reasons.first().map(|m| m.t),
-        ));
-        if turn_key != self.turn_gui_built_for {
-            self.turn_gui_built_for = turn_key;
-            let prev_footer_h = self.turn_gui.size().y;
-            self.turn_gui = self.rebuild_turn_gui(app);
-            if self.turn_gui.size().y != prev_footer_h {
-                // Only update the selection if the footer changes
-                self.gui_built_for = None;
-            }
+        let now = self.current_et.get();
+
+        let footer_view = FooterView {
+            now,
+            paused: self.paused,
+            speed_label: self.sim_speed.rate_label(),
+            can_speed_up: self.sim_speed.can_speed_up(),
+            can_slow_down: self.sim_speed.can_slow_down(),
+        };
+        if self.footer.sync(app, &footer_view) {
+            // The side panel's height depends on the footer's
+            self.gui_built_for = None;
         }
 
         let key = self.gui_structure_key();
         if key != self.gui_built_for {
             self.gui_built_for = key;
-            let (gui, bindings) = self.rebuild_gui(app);
+            let ctx = PanelCtx {
+                app,
+                world: &self.world,
+                parts: &self.parts,
+                now,
+                controls_enabled: &self.controls_enabled,
+            };
+            let (gui, bindings) =
+                panel::build(&ctx, self.selection.selected_entity(), self.footer.height());
             self.gui = gui;
             self.gui_bindings = bindings;
         }
 
         for binding in &self.gui_bindings {
-            binding.sync(&self.world);
+            binding.sync(&self.world, now);
         }
     }
 

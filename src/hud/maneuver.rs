@@ -17,6 +17,7 @@ use crate::{
         transfer::{flyby_porkchop, plan_flyby_at, plan_transfer_at, transfer_porkchop},
         units::{G, KM_PER_EARTH_RADIUS, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
     },
+    hud::porkchop_picker::{PlotAxes, PorkchopPicker},
     sim::{
         bodies::Body,
         docking::allocate_ports,
@@ -25,12 +26,7 @@ use crate::{
         propulsion::{craft_dv, Craft},
     },
     ui::{
-        container::Container,
-        dropdown::Dropdown,
-        hrule::HRule,
-        oklch::oklch,
-        porkchop_picker::{PlotAxes, PorkchopPicker},
-        slider::Slider,
+        container::Container, dropdown::Dropdown, hrule::HRule, oklch::oklch, slider::Slider,
         style::STYLE,
     },
 };

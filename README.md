@@ -123,6 +123,13 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
         - maneuver: ManeuverKind::available, get_*_destinations, get_craft_colocated, compute_porkchop, plan_from_selection, DOCKING_RANGE/SPEED
         - timeline: Timeline, TimelineMark, MarkKind, marks_digest
         - widgets: PorkchopPicker, PlotAxes, stat_row
+        - craft
+        - body
+        - modules
+        - fabricator
+        - transfer
+        - game_over
+        - footer
       - render
         - assets: Asset registration (shaders, meshes, textures, fonts), returning typed Assets {fonts, meshes, textures}
         - meshes: icosphere.rs, polygon.rs

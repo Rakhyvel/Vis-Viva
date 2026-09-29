@@ -1,6 +1,7 @@
 mod astro;
 mod components;
 mod generation;
+mod hud;
 mod scenes;
 mod sim;
 mod ui;

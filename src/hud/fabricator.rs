@@ -8,6 +8,7 @@ use nalgebra_glm::{vec2, Vec2};
 use crate::{
     astro::epoch::EphemerisTime,
     container,
+    hud::stat_row,
     sim::{
         docking::Docking,
         industry::{cost_status, CostKind, CostLine, Factory},
@@ -22,7 +23,6 @@ use crate::{
         modal::Modal,
         progress_bar::ProgressBar,
         scroll_container::ScrollContainer,
-        stat_row::stat_row,
         style::STYLE,
         widget::{recv_msgs, Widget},
     },
