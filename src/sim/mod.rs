@@ -2,6 +2,8 @@
 /// test.
 use hecs::World;
 
+use crate::sim::{clock::Clock, events::EventQueue, parts::PartRegistry};
+
 pub mod bodies;
 pub mod clock;
 pub mod docking;
@@ -16,9 +18,9 @@ pub mod resources;
 
 pub struct Sim {
     world: World,
-    // clock
-    // events
-    // parts
+    clock: Clock,
+    events: EventQueue,
+    parts: PartRegistry,
 }
 
 pub enum SimEffect {
