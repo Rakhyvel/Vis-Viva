@@ -1,9 +1,12 @@
+use apricot::high_precision::WorldPosition;
 ///! Rocket equation (it's a beautiful thing)
 use hecs::{Entity, World};
+use nalgebra_glm::{vec3, DVec3};
 
 use crate::{
     astro::{epoch::EphemerisTime, units::LITTLE_G},
     sim::{
+        hierarchy::{Named, Parent},
         mission::Command,
         resources::{station_resource_totals, stored_mass_kg, take_resource, Resource},
     },
@@ -18,6 +21,16 @@ pub struct Craft {
     pub command: Option<Command>,
     pub command_scheduled: bool,
     pub line_path_entity: Option<Entity>,
+}
+
+pub fn spawn_craft(craft: Craft, named: Named, parent: Parent, world: &mut World) -> Entity {
+    let position: DVec3 = vec3(0., 0., 0.);
+
+    let craft_entity = world.spawn((WorldPosition { pos: position },));
+
+    world.insert(craft_entity, (named, parent, craft)).unwrap();
+
+    craft_entity
 }
 
 pub fn usable_propellant_kg(world: &World, craft: Entity, t: EphemerisTime) -> f64 {

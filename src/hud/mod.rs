@@ -23,7 +23,6 @@ pub mod game_over;
 pub mod maneuver;
 pub mod panel;
 pub mod porkchop_picker;
-pub mod sim_speed;
 pub mod timeline;
 pub mod transfer;
 

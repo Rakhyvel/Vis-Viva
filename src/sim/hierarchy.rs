@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use apricot::{high_precision::WorldPosition, render_core::ModelComponent};
+use apricot::high_precision::WorldPosition;
 ///! Positions and celestial ancestry
 use hecs::{Entity, World};
 use nalgebra_glm::{vec3, DVec3};
@@ -31,7 +31,7 @@ pub fn orbit_system(world: &mut World, now: EphemerisTime) {
     // Build parent -> children map
     let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
 
-    for (entity, (parent, _model)) in world.query::<(&Parent, &ModelComponent)>().iter() {
+    for (entity, (parent, _)) in world.query::<(&Parent, &State)>().iter() {
         children.entry(parent.id).or_default().push(entity);
     }
 
@@ -149,4 +149,9 @@ pub fn ancestor_chain(world: &World, mut selected: Entity) -> Vec<Entity> {
     ancestors
 }
 
-// TODO: set_orbit
+pub fn set_orbit(world: &mut World, craft: Entity, new_craft_orbit: State, new_parent: Entity) {
+    world.remove_one::<State>(craft).ok();
+    world
+        .insert(craft, (new_craft_orbit, Parent { id: new_parent }))
+        .unwrap();
+}

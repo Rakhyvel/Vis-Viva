@@ -371,6 +371,11 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
   - [ ] gotta be able to breed (or clone?) crew
   - [ ] win if you beam a message back to earth, huge amount of power, megaproject
 - [ ] Misc polish
+  - [ ] sounds whenever stuff commits or changes
+    - [ ] little SSTV header chirp whenever you take a measurement with a probe
+    - [ ] drill whir for part fabrication done
+    - [ ] low-pitched square for a burn?
+    - [ ] docking sounds?
   - [ ] planetary atmospheres, clouds, tile detail
   - [ ] better orbit icons, for zoomed out moons, planets, craft. Somehow distinguish between bodies and craft in the orbit view
   - [ ] tooltips, when I figure out what tools to tip

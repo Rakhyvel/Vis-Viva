@@ -25,7 +25,7 @@ use crate::{
         state::State,
         units::{METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR, SUN_MU},
     },
-    components::craft::{replace_line_path, spawn_craft, AssociatedEntity},
+    components::craft::{attach_craft_model, redraw_orbit, replace_line_path, AssociatedEntity},
     container,
     generation::{lexicon::Lexicon, polygon},
     hud::{
@@ -34,7 +34,6 @@ use crate::{
         game_over::GameOverUi,
         maneuver::ManeuverModal,
         panel::{self, panel_structure_bits, CommandMessages, PanelCtx},
-        sim_speed::SimSpeed,
         timeline::{MarkKind, TimelineMark},
         transfer::{TransferResult, TransferUi},
         Binding,
@@ -42,21 +41,18 @@ use crate::{
     scenes::starbox::Starbox,
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
-        docking::{allocate_ports, next_free_port, Docking, PortHost},
-        events::{Event, EventQueue},
-        hierarchy::{
-            docked_position_system, get_ancestor, landed_system, orbit_system, Landed, Named,
-            Parent,
-        },
-        industry::{commit_pending_builds, projected_completion, Factory},
-        life_support::{crew_death, Station},
-        mission::Command,
-        parts::{id_hash, ModuleSpec, PartDef, PartInventory, PartRegistry},
-        propulsion::{apply_burn, Craft},
+        docking::{next_free_port, Docking, PortHost},
+        events::Event,
+        hierarchy::{get_ancestor, Named, Parent},
+        industry::{projected_completion, Factory},
+        life_support::Station,
+        parts::{id_hash, PartInventory, PartRegistry},
+        propulsion::{spawn_craft, Craft},
         resources::{
-            add_resource, commit_station, next_reservoir_limits, transfer_resource, Electrolyzer,
-            Miner, Resource, ResourceStore, SolarPanel,
+            commit_station, next_reservoir_limits, transfer_resource, Electrolyzer, Miner,
+            Resource, ResourceStore, SolarPanel,
         },
+        Sim, SimEffect,
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
@@ -84,8 +80,8 @@ pub const CUBE_DATA: &[u8] = include_bytes!("../../res/cube.obj");
 
 /// Struct that contains info about the game state
 pub struct Gameplay {
-    /// The world where all the entities live
-    world: World,
+    sim: Sim,
+
     /// The camera used for rendering 3d models
     camera_3d: high_precision::Camera,
     /// The sun's light source
@@ -98,9 +94,6 @@ pub struct Gameplay {
     selected_tile: Option<(Entity, usize, LinePathComponent)>,
     clicked_tile_key: Option<(Entity, usize)>,
     hovered_tile: Option<(Entity, usize, LinePathComponent)>,
-
-    /// All the parts, loaded from the toml
-    parts: PartRegistry,
 
     /// Up-down view angle
     phi: f64,
@@ -123,14 +116,6 @@ pub struct Gameplay {
 
     /// Buttons in the side panel are only clickable while paused
     controls_enabled: Rc<Cell<bool>>,
-
-    // Events and timeline
-    event_queue: EventQueue,
-    current_et: Rc<Cell<EphemerisTime>>,
-    paused: bool,
-    sim_speed: SimSpeed,
-    /// Either the next event, or None
-    run_until: Option<EphemerisTime>,
 
     // Vec of unit vectors
     starbox: Starbox,
@@ -269,39 +254,49 @@ impl Scene for Gameplay {
             part_id,
         }) = self.fabricator_ui.update(app)
         {
-            let host = self.world.get::<&Docking>(fabricator).unwrap().host;
-            let ports = self.parts.get(part_id).map_or(0, |d| d.cost.ports_required);
+            let host = self.sim.world().get::<&Docking>(fabricator).unwrap().host;
+            let ports = self
+                .sim
+                .parts()
+                .get(part_id)
+                .map_or(0, |d| d.cost.ports_required);
 
             let reserved_port = if ports > 0 {
-                next_free_port(&self.world, host)
+                next_free_port(self.sim.world(), host)
             } else {
                 None
             };
 
-            let mut factory = self.world.get::<&mut Factory>(fabricator).unwrap();
+            let mut factory = self.sim.world().get::<&mut Factory>(fabricator).unwrap();
             factory.pending_job = Some(part_id);
             factory.reserved_port = reserved_port;
         }
 
-        let now = self.current_et.get();
+        let now = self.sim.clock().now();
 
-        if let Some(command) = self.maneuver_ui.update(now, &self.world, app) {
+        if let Some(command) = self.maneuver_ui.update(now, self.sim.world(), app) {
             if let Some(selected) = self.selection.selected_entity() {
-                self.world.get::<&mut Craft>(selected).unwrap().command = Some(command);
+                self.sim
+                    .world()
+                    .get::<&mut Craft>(selected)
+                    .unwrap()
+                    .command = Some(command);
             }
         }
 
-        if let Some(TransferResult { from, to }) = self.transfer_ui.update(now, &self.world, app) {
+        if let Some(TransferResult { from, to }) =
+            self.transfer_ui.update(now, self.sim.world(), app)
+        {
             self.commit_station();
             transfer_resource(
-                &self.world,
+                self.sim.world(),
                 from.host,
                 to.host,
                 from.resource,
                 f32::MAX,
                 now,
             );
-            self.transfer_ui.rebuild(now, &self.world, app);
+            self.transfer_ui.rebuild(now, self.sim.world(), app);
         }
 
         if !modal_open {
@@ -310,30 +305,39 @@ impl Scene for Gameplay {
                 match msg {
                     CommandMessages::OpenFabricator { fabricator_entity } => {
                         self.fabricator_ui.show(
-                            &self.world,
+                            self.sim.world(),
                             fabricator_entity,
-                            &self.parts,
-                            self.current_et.get(),
+                            self.sim.parts(),
+                            self.sim.clock().now(),
                             app,
                         );
                     }
                     CommandMessages::CancelQueuedFabricator { fabricator_entity } => {
-                        let mut factory =
-                            self.world.get::<&mut Factory>(fabricator_entity).unwrap();
+                        let mut factory = self
+                            .sim
+                            .world()
+                            .get::<&mut Factory>(fabricator_entity)
+                            .unwrap();
                         factory.pending_job = None;
                         factory.reserved_port = None;
                     }
                     CommandMessages::CancelActiveFabricator { fabricator_entity } => {
-                        let mut factory =
-                            self.world.get::<&mut Factory>(fabricator_entity).unwrap();
+                        let mut factory = self
+                            .sim
+                            .world()
+                            .get::<&mut Factory>(fabricator_entity)
+                            .unwrap();
                         factory.current_job = None;
                         factory.reserved_port = None;
                     }
                     CommandMessages::ToggleFabricator { fabricator_entity } => {
                         self.commit_station();
-                        let now = self.current_et.get();
-                        let mut factory =
-                            self.world.get::<&mut Factory>(fabricator_entity).unwrap();
+                        let now = self.sim.clock().now();
+                        let mut factory = self
+                            .sim
+                            .world()
+                            .get::<&mut Factory>(fabricator_entity)
+                            .unwrap();
                         let enabled = factory.enabled;
                         let power = factory.power_watts;
                         if let Some(job) = &mut factory.current_job {
@@ -348,7 +352,7 @@ impl Scene for Gameplay {
                         factory.enabled = !factory.enabled;
                     }
                     CommandMessages::CancelCommand { craft } => {
-                        let mut craft = self.world.get::<&mut Craft>(craft).unwrap();
+                        let mut craft = self.sim.world().get::<&mut Craft>(craft).unwrap();
                         craft.command = None;
                     }
                     CommandMessages::ToggleElectrolyzer {
@@ -356,14 +360,15 @@ impl Scene for Gameplay {
                     } => {
                         self.commit_station();
                         let mut electrolyzer = self
-                            .world
+                            .sim
+                            .world()
                             .get::<&mut Electrolyzer>(electrolyzer_entity)
                             .unwrap();
                         electrolyzer.enabled = !electrolyzer.enabled;
                     }
                     CommandMessages::ToggleMiner { miner_entity } => {
                         self.commit_station();
-                        let mut miner = self.world.get::<&mut Miner>(miner_entity).unwrap();
+                        let mut miner = self.sim.world().get::<&mut Miner>(miner_entity).unwrap();
                         miner.enabled = !miner.enabled;
                     }
                     CommandMessages::Undock { entity } => {
@@ -376,8 +381,8 @@ impl Scene for Gameplay {
                         if let Some(selected) = self.selection.selected_entity() {
                             self.maneuver_ui.show(
                                 selected,
-                                self.current_et.get(),
-                                &self.world,
+                                self.sim.clock().now(),
+                                self.sim.world(),
                                 app,
                             );
                         }
@@ -386,8 +391,8 @@ impl Scene for Gameplay {
                         if let Some(selected) = self.selection.selected_entity() {
                             self.transfer_ui.show(
                                 selected,
-                                self.current_et.get(),
-                                &self.world,
+                                self.sim.clock().now(),
+                                self.sim.world(),
                                 app,
                             );
                         }
@@ -398,67 +403,23 @@ impl Scene for Gameplay {
             for msg in self.footer.update(app) {
                 match msg {
                     TurnMessages::TogglePlay => {
-                        let now = self.current_et.get();
-                        commit_pending_builds(&self.world, &self.parts, now);
-                        self.recompute_run_until();
-                        self.paused = !self.paused;
-                        if !self.paused {
+                        self.sim.toggle_play();
+                        if !self.sim.clock().paused() {
                             self.footer.resumed();
                         }
                     }
-                    TurnMessages::SpeedUp => self.sim_speed.speed_up(),
-                    TurnMessages::SlowDown => self.sim_speed.slow_down(),
+                    TurnMessages::SpeedUp => self.sim.speed_up(),
+                    TurnMessages::SlowDown => self.sim.slow_down(),
                 }
             }
         }
 
-        if !self.paused {
-            let dt = (1.0 / 60.0_f64) * self.sim_speed.get_rate(); // TODO: Expose delta_seconds
-            let mut t = self.current_et.get() + EphemerisTime::from_secs(dt);
-
-            if let Some(stop) = self.run_until {
-                if t >= stop {
-                    t = stop; // land exactly on the boundary
-                    self.paused = true
-                }
-            }
-            self.current_et.set(t);
-
-            if self.paused {
-                // Save what stopped us so that we can display it to the player
-                self.footer.stopped_at(t);
-
-                for event in self.event_queue.pop_due(t) {
-                    self.handle_event(event, app);
-                }
-                self.complete_due_jobs(t, app);
-                self.recompute_run_until();
-            }
-
-            if !self.game_over_ui.is_shown() {
-                if let Some((station, cause)) = crew_death(&self.world, self.current_et.get()) {
-                    let now = self.current_et.get();
-                    commit_station(&self.world, station, now);
-                    self.world.get::<&mut Station>(station).unwrap().num_crew = 0;
-                    self.paused = true;
-                    self.run_until = None;
-
-                    let name = self
-                        .world
-                        .get::<&Named>(station)
-                        .map(|s| s.name.clone())
-                        .unwrap_or_default();
-                    self.game_over_ui.show(&name, cause, now, app);
-                }
-            }
-        }
+        self.sim.step(1.0 / 60.0);
+        self.apply_sim_effects(app);
 
         // Update GUI stuff
-        self.controls_enabled.set(self.paused);
+        self.controls_enabled.set(self.sim.clock().paused());
 
-        orbit_system(&mut self.world, self.current_et.get());
-        docked_position_system(&mut self.world);
-        landed_system(&mut self.world);
         self.select_system();
         self.camera_update(app);
         if !modal_open {
@@ -500,24 +461,24 @@ impl Scene for Gameplay {
         self.render_dots(app);
         app.renderer.directional_light_system(
             &mut self.directional_light,
-            &mut self.world,
+            self.sim.world_mut(),
             &self.bvh,
         );
         app.renderer.render_3d_models_system(
-            &mut self.world,
+            self.sim.world_mut(),
             &self.directional_light,
             &self.bvh,
             Some(&self.camera_3d),
             false,
         );
         app.renderer
-            .render_3d_line_paths(&self.world, Some(&self.camera_3d));
+            .render_3d_line_paths(self.sim.world(), Some(&self.camera_3d));
 
         // Draw the 2D stuff
         // Draw selected reticle
         if let Some(entity) = self.selection.selected_entity() {
             if !self.selection.is_animating(app.seconds as f64)
-                && self.world.get::<&Craft>(entity).is_ok()
+                && self.sim.world().get::<&Craft>(entity).is_ok()
             {
                 let reticle_texture = app.renderer.get_texture_id_from_name("reticle").unwrap();
                 const WIDTH: f32 = 16.0;
@@ -538,11 +499,13 @@ impl Scene for Gameplay {
         // Draw hovered reticle
         if let (Some(hovered), Some(selected)) = (self.hovered, self.selection.selected_entity()) {
             if hovered != selected {
-                let hovered_world_pos = self.world.get::<&WorldPosition>(hovered).unwrap().pos;
-                let named = self.world.get::<&Named>(hovered).unwrap();
+                let hovered_world_pos =
+                    self.sim.world().get::<&WorldPosition>(hovered).unwrap().pos;
+                let named = self.sim.world().get::<&Named>(hovered).unwrap();
 
                 let radius = self
-                    .world
+                    .sim
+                    .world()
                     .get::<&Body>(hovered)
                     .map(|b| b.body_radius)
                     .unwrap_or(0.0);
@@ -581,15 +544,26 @@ impl Scene for Gameplay {
             .into_iter()
             .flatten()
         {
-            let world_pos = self.world.get::<&WorldPosition>(*selected).unwrap().pos;
+            let world_pos = self
+                .sim
+                .world()
+                .get::<&WorldPosition>(*selected)
+                .unwrap()
+                .pos;
             let relative_pos = world_pos - self.camera_3d.world_pos;
 
             let d = relative_pos.norm();
-            let r = self.world.get::<&Body>(*selected).unwrap().body_radius;
+            let r = self
+                .sim
+                .world()
+                .get::<&Body>(*selected)
+                .unwrap()
+                .body_radius;
             let to_camera = -relative_pos / d;
 
             let tile_dir = self
-                .world
+                .sim
+                .world()
                 .get::<&TileMap>(*selected)
                 .unwrap()
                 .tile_offset(*index as u32, 1.0);
@@ -862,7 +836,6 @@ impl Gameplay {
         let station_parent = station_parent.expect("generator returned no station host");
         let parent_mu = world.get::<&Body>(station_parent).unwrap().mu;
         let parent_body_radius = world.get::<&Body>(station_parent).unwrap().body_radius;
-        let parent_pos = world.get::<&WorldPosition>(station_parent).unwrap().pos;
 
         let station_payload = parts
             .all()
@@ -872,16 +845,13 @@ impl Gameplay {
 
         let station = spawn_craft(
             station_payload,
-            SceneObject { bvh_node_id: None },
             Named {
                 name: String::from("Station"),
             },
             Parent { id: station_parent },
             &mut world,
-            &app.renderer,
-            &mut bvh,
         );
-
+        attach_craft_model(&mut world, &app.renderer, &mut bvh, station);
         let station_state = State::from_kepler(
             parent_body_radius * 16.0,
             0.2,
@@ -893,25 +863,7 @@ impl Gameplay {
             parent_mu,
         );
         world.insert_one(station, station_state).unwrap();
-
-        let vertices: Vec<f32> = station_state
-            .generate_orbit_vertices(8192, parent_mu, None)
-            .unwrap()
-            .iter()
-            .flat_map(|v| v.iter().map(|x| *x as f32))
-            .collect();
-
-        replace_line_path(
-            &mut world,
-            &app.renderer,
-            station,
-            Some((
-                WorldPosition { pos: parent_pos },
-                Parent { id: station_parent },
-                LinePathComponent::new(vertices),
-                AssociatedEntity { associate: station },
-            )),
-        );
+        redraw_orbit(&mut world, &app.renderer, station, None);
 
         let mut starting_inventory = PartInventory {
             parts: HashMap::new(),
@@ -1033,10 +985,8 @@ impl Gameplay {
         let font = app.renderer.get_font_id_from_name("font").unwrap();
         app.renderer.set_font(font);
 
-        let event_queue = EventQueue::new();
-
         let mut retval = Self {
-            world,
+            sim: Sim::new(world, parts),
             camera_3d: high_precision::Camera {
                 world_pos: vec3(1.0, 1.0, 1.0),
                 inner: Camera::new(
@@ -1077,8 +1027,6 @@ impl Gameplay {
             clicked_tile_key: None,
             hovered_tile: None,
 
-            parts,
-
             phi: 2.5,
             theta: -PI / 4.0,
             distance: 64.0,
@@ -1095,39 +1043,12 @@ impl Gameplay {
 
             controls_enabled: Rc::new(Cell::new(false)),
 
-            current_et: Rc::new(Cell::new(EphemerisTime::epoch())),
-            event_queue,
-            paused: true,
-            sim_speed: SimSpeed::new(),
-            run_until: None,
-
             starbox: Starbox::new(9000, vec3(1.0, 2.0, 4.0), 0.4),
         };
 
         retval.sync_panel(app);
 
         retval
-    }
-
-    fn recompute_run_until(&mut self) {
-        let now = self.current_et.get();
-        self.schedule_events();
-        let next_event = self.event_queue.events.keys().next().copied();
-        let next_limit = self.next_station_limit(now);
-        let next_job_complete = self.next_job_completion(now);
-
-        self.run_until = [next_event, next_limit, next_job_complete]
-            .into_iter()
-            .flatten()
-            .min()
-    }
-
-    fn next_job_completion(&self, now: EphemerisTime) -> Option<EphemerisTime> {
-        self.world
-            .query::<&Factory>()
-            .iter()
-            .filter_map(|(_, f)| f.current_job.as_ref()?.completion_et(f, now))
-            .min()
     }
 
     /// Changes various game state based on user mouse and keyboard input
@@ -1168,7 +1089,8 @@ impl Gameplay {
     fn gui_structure_key(&self) -> Option<(Entity, u32, u64, u64)> {
         let sel = self.selection.selected_entity()?;
         let gen = self
-            .world
+            .sim
+            .world()
             .get::<&PortHost>(sel)
             .map(|s| s.dock_gen)
             .unwrap_or(0);
@@ -1176,25 +1098,24 @@ impl Gameplay {
         Some((
             sel,
             gen,
-            self.event_queue.version(),
-            panel_structure_bits(&self.world),
+            self.sim.events().version(),
+            panel_structure_bits(self.sim.world()),
         ))
     }
 
     fn undock(&mut self, craft: Entity, app: &App) {
         const SEPARATION_DV: f64 = 0.1 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
 
-        let now = self.current_et.get();
+        let now = self.sim.clock().now();
 
-        let Ok(host) = self.world.get::<&Docking>(craft).map(|d| d.host) else {
+        let Ok(host) = self.sim.world().get::<&Docking>(craft).map(|d| d.host) else {
             return; // not docked?!
         };
-        let parent = self.world.get::<&Parent>(craft).unwrap().id;
-        let parent_mu = self.world.get::<&Body>(parent).unwrap().mu;
-        let parent_world_pos = self.world.get::<&WorldPosition>(parent).unwrap().pos;
+        let parent = self.sim.world().get::<&Parent>(craft).unwrap().id;
+        let parent_mu = self.sim.world().get::<&Body>(parent).unwrap().mu;
 
         // Set the new state of the craft to be the host state + a little radial boost
-        let Ok(host_state) = self.world.get::<&State>(host).map(|s| *s) else {
+        let Ok(host_state) = self.sim.world().get::<&State>(host).map(|s| *s) else {
             return; // host wasn't orbiting
         };
         let Ok(mut new_state) = host_state.propagate(now, parent_mu) else {
@@ -1203,578 +1124,32 @@ impl Gameplay {
         new_state.v += new_state.r.normalize() * SEPARATION_DV;
 
         // Commit resource flows now
-        commit_station(&self.world, host, now);
-        commit_station(&self.world, craft, now);
+        commit_station(self.sim.world(), host, now);
+        commit_station(self.sim.world(), craft, now);
 
-        let vertices: Vec<f32> = new_state
-            .generate_orbit_vertices(8192, parent_mu, None)
-            .unwrap()
-            .iter()
-            .flat_map(|v| v.iter().map(|x| *x as f32))
-            .collect();
+        self.sim.world_mut().remove_one::<Docking>(craft).ok();
+        self.sim.world_mut().insert_one(craft, new_state).unwrap();
 
-        replace_line_path(
-            &mut self.world,
-            &app.renderer,
-            craft,
-            Some((
-                WorldPosition {
-                    pos: parent_world_pos,
-                },
-                Parent { id: parent },
-                LinePathComponent::new(vertices),
-                AssociatedEntity { associate: craft },
-            )),
-        );
+        redraw_orbit(self.sim.world_mut(), &app.renderer, craft, None);
 
-        self.world.remove_one::<Docking>(craft).ok();
-        self.world.insert_one(craft, new_state).unwrap();
-
-        if let Ok(mut ph) = self.world.get::<&mut PortHost>(craft) {
+        if let Ok(mut ph) = self.sim.world().get::<&mut PortHost>(craft) {
             ph.dock_gen += 1;
         }
-        if let Ok(mut ph) = self.world.get::<&mut PortHost>(host) {
+        if let Ok(mut ph) = self.sim.world().get::<&mut PortHost>(host) {
             ph.dock_gen += 1;
-        }
-    }
-
-    fn schedule_events(&mut self) {
-        let crafts_with_commands: Vec<(Entity, Command)> = self
-            .world
-            .query::<(&mut Craft,)>()
-            .iter()
-            .filter_map(|(entity, (craft,))| {
-                if craft.command.is_some() && !craft.command_scheduled {
-                    craft.command_scheduled = true;
-                    craft.command.as_ref().map(|cmd| (entity, cmd.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for (entity, command) in crafts_with_commands {
-            match command {
-                Command::Transfer { to, plan, .. } => {
-                    let departure_time = plan.transfer_state.t;
-                    let arrival_time = plan.flyby_state.t;
-                    let circ_time = plan.circ_state.t;
-
-                    println!("departure_time: {}", departure_time.as_calendar());
-                    println!("arrival_time.t: {}", arrival_time.as_calendar());
-                    println!("circ_time.t: {}", circ_time.as_calendar());
-
-                    assert!(departure_time < arrival_time);
-                    assert!(arrival_time < circ_time);
-
-                    let sois = command.transition_schedule();
-                    self.event_queue.push(
-                        arrival_time,
-                        Event::SoiChange {
-                            craft: entity,
-                            new_parent: to,
-                            new_craft_orbit: plan.flyby_state,
-                            new_soi_radius: plan.soi_radius,
-                            desc: sois[0].0,
-                        },
-                    );
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(circ_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Flyby { to, from, plan, .. } => {
-                    let departure_time = plan.transfer_state.t;
-                    let arrival_time = plan.flyby_state.t;
-                    let exit_time = plan.exit_state.t;
-
-                    println!("departure_time: {}", departure_time.as_calendar());
-                    println!("arrival_time.t: {}", arrival_time.as_calendar());
-                    println!("exit_time.t: {}", exit_time.as_calendar());
-
-                    assert!(departure_time < arrival_time);
-                    assert!(arrival_time < exit_time);
-
-                    let sois = command.transition_schedule();
-
-                    // Enter SOI event
-                    self.event_queue.push(
-                        arrival_time,
-                        Event::SoiChange {
-                            craft: entity,
-                            new_parent: to,
-                            new_craft_orbit: plan.flyby_state,
-                            new_soi_radius: plan.soi_radius,
-                            desc: sois[0].0,
-                        },
-                    );
-
-                    // Exit SOI event
-                    self.event_queue.push(
-                        exit_time,
-                        Event::SoiChange {
-                            craft: entity,
-                            new_parent: from,
-                            new_craft_orbit: plan.exit_state,
-                            new_soi_radius: plan.soi_radius,
-                            desc: sois[1].0,
-                        },
-                    );
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(exit_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Rendezvous { plan, .. } => {
-                    let arrival_time = plan.rendezvous_state.t;
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(arrival_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Escape { to, plan, .. } => {
-                    let departure_time = plan.escape_burn.t;
-                    let arrival_time = plan.exit_state.t;
-
-                    println!("departure_time: {}", departure_time.as_calendar());
-                    println!("arrival_time.t: {}", arrival_time.as_calendar());
-
-                    assert!(departure_time < arrival_time);
-
-                    let sois = command.transition_schedule();
-                    self.event_queue.push(
-                        arrival_time,
-                        Event::SoiChange {
-                            craft: entity,
-                            new_parent: to,
-                            new_craft_orbit: plan.exit_state,
-                            new_soi_radius: plan.soi_radius,
-                            desc: sois[0].0,
-                        },
-                    );
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(arrival_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Launch { plan, .. } => {
-                    let launch_time = plan.launch_burn.t;
-                    let circ_time = plan.circ_burn.t;
-
-                    println!("launch_time: {}", launch_time.as_calendar());
-                    println!("circ_time.t: {}", circ_time.as_calendar());
-
-                    assert!(launch_time < circ_time);
-
-                    self.event_queue
-                        .push(launch_time, Event::Launch { craft: entity });
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(circ_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Land { plan, .. } => {
-                    let deorbit_time = plan.deorbit_burn.t;
-                    let land_time = plan.landing_burn.t;
-
-                    println!("deorbit_time: {}", deorbit_time.as_calendar());
-                    println!("land_time.t: {}", land_time.as_calendar());
-
-                    assert!(deorbit_time < land_time);
-
-                    for burn in command.burn_schedule() {
-                        self.event_queue.push(
-                            burn.t(),
-                            Event::Burn {
-                                craft: entity,
-                                new_orbit: burn.new_orbit,
-                                soi_radius: burn.soi_radius,
-                                dv: burn.dv,
-                                desc: burn.desc,
-                                purpose: burn.purpose,
-                            },
-                        )
-                    }
-
-                    self.event_queue
-                        .push(land_time, Event::Land { craft: entity });
-                    self.event_queue
-                        .push(land_time, Event::CompleteCommand { craft: entity });
-                }
-                Command::Dock {
-                    with, arrive_et, ..
-                } => {
-                    self.event_queue.push(
-                        arrive_et,
-                        Event::Dock {
-                            craft: entity,
-                            with,
-                        },
-                    );
-                    self.event_queue
-                        .push(arrive_et, Event::CompleteCommand { craft: entity });
-                }
-            }
-        }
-    }
-
-    fn handle_event(&mut self, event: Event, app: &App) {
-        match event {
-            Event::SoiChange {
-                craft,
-                new_parent,
-                new_craft_orbit,
-                new_soi_radius,
-                ..
-            } => {
-                self.selection.set_selected(craft, app.seconds as f64);
-
-                let new_parent_world_pos =
-                    self.world.get::<&WorldPosition>(new_parent).unwrap().pos;
-                let new_parent_mu = self.world.get::<&Body>(new_parent).unwrap().mu;
-
-                let vertices: Vec<f32> = new_craft_orbit
-                    .generate_orbit_vertices(8192, new_parent_mu, Some(new_soi_radius))
-                    .unwrap()
-                    .iter()
-                    .flat_map(|v| v.iter().map(|x| *x as f32))
-                    .collect();
-
-                replace_line_path(
-                    &mut self.world,
-                    &app.renderer,
-                    craft,
-                    Some((
-                        WorldPosition {
-                            pos: new_parent_world_pos, // center the orbit line path about the new parent
-                        },
-                        Parent { id: new_parent },
-                        LinePathComponent::new(vertices),
-                        AssociatedEntity { associate: craft },
-                    )),
-                );
-                self.world.remove_one::<State>(craft).ok();
-                self.world
-                    .insert(craft, (new_craft_orbit, Parent { id: new_parent }))
-                    .unwrap();
-            }
-            Event::Burn {
-                craft,
-                new_orbit,
-                soi_radius,
-                dv,
-                ..
-            } => {
-                self.selection.set_selected(craft, app.seconds as f64);
-
-                println!(
-                    "Burn firing, r={:?} v={:?} at {}",
-                    new_orbit.r,
-                    new_orbit.v,
-                    self.current_et.get().as_calendar()
-                );
-                let parent = self.world.get::<&Parent>(craft).unwrap().id;
-                let parent_world_pos = self.world.get::<&WorldPosition>(parent).unwrap().pos;
-                let parent_mu = { self.world.get::<&Body>(parent).unwrap().mu };
-
-                let vertices: Vec<f32> = new_orbit
-                    .generate_orbit_vertices(8192, parent_mu, soi_radius)
-                    .unwrap()
-                    .iter()
-                    .flat_map(|v| v.iter().map(|x| *x as f32))
-                    .collect();
-
-                replace_line_path(
-                    &mut self.world,
-                    &app.renderer,
-                    craft,
-                    Some((
-                        WorldPosition {
-                            pos: parent_world_pos,
-                        },
-                        Parent { id: parent },
-                        LinePathComponent::new(vertices),
-                        AssociatedEntity { associate: craft },
-                    )),
-                );
-                apply_burn(&self.world, craft, dv, self.current_et.get());
-                self.world.remove_one::<State>(craft).ok();
-                self.world
-                    .insert(craft, (new_orbit, Parent { id: parent }))
-                    .unwrap();
-            }
-            Event::Launch { craft } => {
-                self.selection.set_selected(craft, app.seconds as f64);
-
-                println!(
-                    "Launch event firing for {:?} at {}",
-                    craft,
-                    self.current_et.get().as_calendar()
-                );
-                let parent_id = self.world.get::<&Parent>(craft).unwrap().id;
-                commit_station(&self.world, craft, self.current_et.get());
-                self.world.remove_one::<Landed>(craft).ok();
-                self.world
-                    .insert(craft, (Parent { id: parent_id },))
-                    .unwrap();
-            }
-            Event::Land { craft } => {
-                self.selection.set_selected(craft, app.seconds as f64);
-
-                let offset = {
-                    let craft_state = self.world.get::<&State>(craft).unwrap();
-                    let parent_id = self.world.get::<&Parent>(craft).unwrap().id;
-                    let parent_body_mu = self.world.get::<&Body>(parent_id).unwrap().mu;
-                    craft_state
-                        .propagate(self.current_et.get(), parent_body_mu)
-                        .unwrap()
-                        .r
-                };
-
-                self.world.remove_one::<State>(craft).ok();
-                replace_line_path(&mut self.world, &app.renderer, craft, None);
-                commit_station(&self.world, craft, self.current_et.get());
-                self.world.insert_one(craft, Landed { offset }).unwrap();
-            }
-            Event::Dock { craft, with } => {
-                let Some((own_port, host_port)) = allocate_ports(&self.world, craft, with) else {
-                    // port got taken while we were in transit. Just stay in orbit.
-                    return;
-                };
-
-                self.selection.set_selected(craft, app.seconds as f64);
-
-                {
-                    let mut docks = self.world.get::<&mut PortHost>(craft).unwrap();
-                    docks.dock_gen += 1;
-                }
-
-                self.world.remove_one::<State>(craft).ok();
-                replace_line_path(&mut self.world, &app.renderer, craft, None);
-                commit_station(&self.world, craft, self.current_et.get());
-                self.world
-                    .insert_one(
-                        craft,
-                        Docking {
-                            host: with,
-                            host_port,
-                            own_port,
-                        },
-                    )
-                    .unwrap();
-            }
-            Event::CompleteCommand { craft } => {
-                let mut craft = self.world.get::<&mut Craft>(craft).unwrap();
-                craft.command = None;
-                craft.command_scheduled = false;
-            }
-            Event::FactoryComplete { .. } => {
-                // Nothing to do here, factory completes are handled elsewhere.
-            }
         }
     }
 
     fn commit_station(&self) {
-        for (station, _) in self.world.query::<&PortHost>().iter() {
-            commit_station(&self.world, station, self.current_et.get());
+        for (station, _) in self.sim.world().query::<&PortHost>().iter() {
+            commit_station(self.sim.world(), station, self.sim.clock().now());
         }
-    }
-
-    fn complete_due_jobs(&mut self, now: EphemerisTime, app: &App) {
-        // TODO: Split up into sim + render, move to resp. modules
-        let done: Vec<(Entity, u64)> = self
-            .world
-            .query::<&Factory>()
-            .iter()
-            .filter_map(|(e, f)| {
-                let job = f.current_job.as_ref()?;
-                (job.energy_at(f, now) >= job.energy_total - f.power_watts)
-                    .then_some((e, job.part_id))
-            })
-            .collect();
-
-        for (fab, part_id) in done {
-            self.selection.set_selected(fab, app.seconds as f64);
-
-            let parent = self.world.get::<&Parent>(fab).unwrap().id;
-            let def = self.parts.get(part_id).unwrap().clone();
-
-            self.commit_station();
-
-            // Add any byproducts
-            for (r, amt) in &def.byproducts {
-                add_resource(&self.world, parent, *r, *amt, self.current_et.get());
-            }
-
-            // For now just eject the stage
-            if def.cost.ports_required > 0 {
-                let host_port = {
-                    self.world
-                        .get::<&Factory>(fab)
-                        .unwrap()
-                        .reserved_port
-                        .unwrap()
-                };
-                self.deliver_craft(parent, &def, host_port, app);
-            } else {
-                let mut part_inventory = self.world.get::<&mut PartInventory>(parent).unwrap();
-                part_inventory.add(part_id, 1);
-            }
-
-            // clear job so that factory becomes idle
-            if let Ok(mut f) = self.world.get::<&mut Factory>(fab) {
-                f.current_job = None;
-                f.reserved_port = None
-            }
-        }
-    }
-
-    fn deliver_craft(&mut self, station: Entity, def: &PartDef, host_port: u32, app: &App) {
-        // TODO: Split up into sim + render, move to resp. modules
-        let now = self.current_et.get();
-        let parent = *self.world.get::<&Parent>(station).unwrap();
-
-        let craft = spawn_craft(
-            def.instantiate_craft(),
-            SceneObject { bvh_node_id: None },
-            Named {
-                name: def.name.clone(),
-            },
-            parent,
-            &mut self.world,
-            &app.renderer,
-            &mut self.bvh,
-        );
-        self.world
-            .insert_one(
-                craft,
-                PortHost {
-                    dock_gen: 0,
-                    ports: def.ports,
-                },
-            )
-            .unwrap();
-
-        for (port, spec) in def.modules.iter().enumerate() {
-            let docking = Docking {
-                host: craft,
-                host_port: port as u32,
-                own_port: 0 as u32, // TODO: This will work for modules now, but maybe break if modules get multiple docking ports
-            };
-            let parent = Parent { id: craft };
-            match *spec {
-                ModuleSpec::Store {
-                    resource,
-                    amount,
-                    capacity,
-                } => self.world.spawn((
-                    docking,
-                    ResourceStore {
-                        resource,
-                        amount,
-                        capacity,
-                        amount_et: now,
-                    },
-                    parent,
-                )),
-                ModuleSpec::Miner {
-                    power_watts,
-                    kg_per_s,
-                } => self.world.spawn((
-                    docking,
-                    Miner {
-                        enabled: false,
-                        kg_per_s,
-                        power_watts,
-                    },
-                    parent,
-                )),
-            };
-        }
-
-        let own_port = next_free_port(&self.world, craft).expect("gotta have a port babey");
-        self.world
-            .insert_one(
-                craft,
-                Docking {
-                    host: station,
-                    host_port,
-                    own_port,
-                },
-            )
-            .unwrap();
-
-        self.selection.crafts.push(craft);
     }
 
     fn sync_models(&mut self, app: &App) {
         for (_entity, (world_pos, model, scene_obj)) in
-            self.world
+            self.sim
+                .world_mut()
                 .query_mut::<(&WorldPosition, &mut ModelComponent, &SceneObject)>()
         {
             let new_pos: Vec3 = nalgebra_glm::convert(world_pos.pos - self.camera_3d.world_pos);
@@ -1787,10 +1162,42 @@ impl Gameplay {
         }
     }
 
+    fn apply_sim_effects(&mut self, app: &App) {
+        for effect in self.sim.drain_effects() {
+            match effect {
+                SimEffect::OrbitChanged { craft, soi_radius } => {
+                    redraw_orbit(self.sim.world_mut(), &app.renderer, craft, soi_radius);
+                }
+                SimEffect::OrbitCleared { craft } => {
+                    replace_line_path(self.sim.world_mut(), &app.renderer, craft, None);
+                }
+                SimEffect::CraftSpawned { craft } => {
+                    attach_craft_model(self.sim.world_mut(), &app.renderer, &mut self.bvh, craft);
+                    self.selection.crafts.push(craft);
+                }
+                SimEffect::Focus { entity } => {
+                    self.selection.set_selected(entity, app.seconds as f64);
+                }
+                SimEffect::Stopped { at } => self.footer.stopped_at(at),
+                SimEffect::CrewLost { station, cause } => {
+                    let name = self
+                        .sim
+                        .world()
+                        .get::<&Named>(station)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    self.game_over_ui
+                        .show(&name, cause, self.sim.clock().now(), app);
+                }
+            }
+        }
+    }
+
     fn build_marks(&self) -> Vec<TimelineMark> {
         // Add hard events from the event queue
         let mut marks: Vec<TimelineMark> = self
-            .event_queue
+            .sim
+            .events()
             .events
             .iter()
             .flat_map(|(et, events)| {
@@ -1808,15 +1215,20 @@ impl Gameplay {
             .collect();
 
         // Add pending projected factory completion events
-        for (fab, (_, f)) in self.world.query::<(&Docking, &Factory)>().iter() {
+        for (fab, (_, f)) in self.sim.world().query::<(&Docking, &Factory)>().iter() {
             let (t, part_id) = if let Some(part_id) = f.pending_job {
                 (
-                    projected_completion(&self.world, fab, &self.parts, self.current_et.get())
-                        .unwrap(),
+                    projected_completion(
+                        self.sim.world(),
+                        fab,
+                        self.sim.parts(),
+                        self.sim.clock().now(),
+                    )
+                    .unwrap(),
                     part_id,
                 )
             } else if let Some(current_job) = &f.current_job {
-                let Some(completion_et) = current_job.completion_et(f, self.current_et.get())
+                let Some(completion_et) = current_job.completion_et(f, self.sim.clock().now())
                 else {
                     continue;
                 };
@@ -1839,12 +1251,12 @@ impl Gameplay {
         }
 
         // Add projected reservoir limit events, Depleted and Filled
-        for (entity, (_, named)) in self.world.query::<(&PortHost, &Named)>().iter() {
+        for (entity, (_, named)) in self.sim.world().query::<(&PortHost, &Named)>().iter() {
             for (et, resource, rate) in next_reservoir_limits(
-                &self.world,
+                self.sim.world(),
                 entity,
-                &self.parts,
-                self.current_et.get(),
+                self.sim.parts(),
+                self.sim.clock().now(),
                 true,
             ) {
                 if rate < 0.0 {
@@ -1866,7 +1278,7 @@ impl Gameplay {
         }
 
         // Add projected mission burns (burns, SOI crossings, etc)
-        for (_, (craft, named)) in self.world.query::<(&Craft, &Named)>().iter() {
+        for (_, (craft, named)) in self.sim.world().query::<(&Craft, &Named)>().iter() {
             let Some(command) = &craft.command else {
                 continue;
             };
@@ -1895,37 +1307,26 @@ impl Gameplay {
         marks
     }
 
-    fn next_station_limit(&self, now: EphemerisTime) -> Option<EphemerisTime> {
-        let mut limits = vec![];
-        for (entity, _) in self.world.query::<&PortHost>().iter() {
-            limits.extend(next_reservoir_limits(
-                &self.world,
-                entity,
-                &self.parts,
-                now,
-                true,
-            ));
-        }
-
-        limits.into_iter().map(|(et, _, _)| et).min()
-    }
-
     fn craft_name_from_event(&self, event: &Event) -> (String, String) {
         match event {
             Event::SoiChange { craft, desc, .. } | Event::Burn { craft, desc, .. } => {
-                let named = self.world.get::<&Named>(*craft).unwrap();
+                let named = self.sim.world().get::<&Named>(*craft).unwrap();
                 (named.name.clone(), desc.to_string())
             }
 
             Event::Launch { craft } | Event::Land { craft } | Event::Dock { craft, .. } => {
-                let named = self.world.get::<&Named>(*craft).unwrap();
+                let named = self.sim.world().get::<&Named>(*craft).unwrap();
                 (named.name.clone(), "???".to_string())
             }
 
             Event::FactoryComplete { craft, part_id } => {
-                let parent = self.world.get::<&Parent>(*craft).unwrap().id;
-                let named = self.world.get::<&Named>(parent).unwrap();
-                let part_def = self.parts.get(*part_id).map_or("???", |p| p.name.as_str());
+                let parent = self.sim.world().get::<&Parent>(*craft).unwrap().id;
+                let named = self.sim.world().get::<&Named>(parent).unwrap();
+                let part_def = self
+                    .sim
+                    .parts()
+                    .get(*part_id)
+                    .map_or("???", |p| p.name.as_str());
                 (named.name.clone(), part_def.to_string())
             }
 
@@ -1941,8 +1342,14 @@ impl Gameplay {
         };
 
         // Buildings keep the camera centered on their planet, not on themselves
-        let focus = if self.world.get::<&SurfaceTile>(selected_entity).is_ok() {
-            self.world
+        let focus = if self
+            .sim
+            .world()
+            .get::<&SurfaceTile>(selected_entity)
+            .is_ok()
+        {
+            self.sim
+                .world()
                 .get::<&Parent>(selected_entity)
                 .map(|p| p.id)
                 .unwrap_or(selected_entity)
@@ -1950,7 +1357,7 @@ impl Gameplay {
             selected_entity
         };
 
-        if let Ok(world_pos) = self.world.get::<&WorldPosition>(focus) {
+        if let Ok(world_pos) = self.sim.world().get::<&WorldPosition>(focus) {
             self.selection.selected_pos = world_pos.pos
         }
     }
@@ -1962,7 +1369,7 @@ impl Gameplay {
         // If the tile is hovered, and selected, make the tile's occupant hovered and selected
         if let Some((entity, tile_index, _)) = &pick {
             let occupant = {
-                let tile_map = self.world.get::<&TileMap>(*entity).unwrap();
+                let tile_map = self.sim.world().get::<&TileMap>(*entity).unwrap();
                 tile_map.occupant(*tile_index as u32)
             };
 
@@ -1995,9 +1402,9 @@ impl Gameplay {
             return None; // If nothing is selected, just return
         };
 
-        let body_entity = if self.world.get::<&Body>(selected_entity).is_ok() {
+        let body_entity = if self.sim.world().get::<&Body>(selected_entity).is_ok() {
             selected_entity
-        } else if let Ok(parent) = self.world.get::<&Parent>(selected_entity) {
+        } else if let Ok(parent) = self.sim.world().get::<&Parent>(selected_entity) {
             parent.id
         } else {
             return None;
@@ -2005,7 +1412,8 @@ impl Gameplay {
 
         // Check if the selected is a body
         let mut q = match self
-            .world
+            .sim
+            .world()
             .query_one::<(&Body, &WorldPosition, &TileMap)>(body_entity)
         {
             Ok(q) => q,
@@ -2062,11 +1470,12 @@ impl Gameplay {
         let mouse_pos = app.mouse_pos;
 
         for (entity, (world_pos, _model)) in self
-            .world
+            .sim
+            .world()
             .query::<hecs::Without<(&WorldPosition, &ModelComponent), &SurfaceTile>>()
             .iter()
         {
-            let body = self.world.get::<&Body>(entity);
+            let body = self.sim.world().get::<&Body>(entity);
             if body.is_ok() != bodies {
                 continue;
             }
@@ -2098,27 +1507,33 @@ impl Gameplay {
     fn line_path_system(&mut self, app: &App) {
         // Extract out the world positions
         let mut pos_map = HashMap::new();
-        for (entity, world_pos) in self.world.query::<&WorldPosition>().iter() {
+        for (entity, world_pos) in self.sim.world().query::<&WorldPosition>().iter() {
             pos_map.insert(entity, world_pos.pos);
         }
 
         // Find which body the camera is closest to, and how close
         let mut closest_body: Option<Entity> = None;
         let mut closest_dist = f64::INFINITY;
-        for (entity, (world_pos, _body)) in self.world.query::<(&WorldPosition, &Body)>().iter() {
+        for (entity, (world_pos, _body)) in
+            self.sim.world().query::<(&WorldPosition, &Body)>().iter()
+        {
             let dist = (world_pos.pos - self.camera_3d.world_pos).norm();
             if dist < closest_dist {
                 closest_dist = dist;
                 closest_body = Some(entity);
             }
         }
-        let closest_body =
-            get_ancestor(&self.world, closest_body.unwrap()).unwrap_or(self.selection.bodies[0]);
-        let closest_planet = get_ancestor(&self.world, closest_body).unwrap_or(closest_body);
+        let closest_body = get_ancestor(self.sim.world(), closest_body.unwrap())
+            .unwrap_or(self.selection.bodies[0]);
+        let closest_planet = get_ancestor(self.sim.world(), closest_body).unwrap_or(closest_body);
         let closest_planet_soi = {
-            let closest_planet_body = self.world.get::<&Body>(closest_planet).unwrap();
-            let closest_planet_orb = self.world.get::<&State>(closest_planet).unwrap();
-            let sun_body = self.world.get::<&Body>(self.selection.bodies[0]).unwrap();
+            let closest_planet_body = self.sim.world().get::<&Body>(closest_planet).unwrap();
+            let closest_planet_orb = self.sim.world().get::<&State>(closest_planet).unwrap();
+            let sun_body = self
+                .sim
+                .world()
+                .get::<&Body>(self.selection.bodies[0])
+                .unwrap();
             sphere_of_influence(
                 closest_planet_orb.semi_major_axis(SUN_MU),
                 closest_planet_body.mass(),
@@ -2128,20 +1543,25 @@ impl Gameplay {
 
         // Get the associated craft, if it exists
         let mut assoc_entity_map = HashMap::new();
-        for (entity, _line) in self.world.query::<&LinePathComponent>().iter() {
+        for (entity, _line) in self.sim.world().query::<&LinePathComponent>().iter() {
             assoc_entity_map.insert(
                 entity,
-                self.world
+                self.sim
+                    .world()
                     .get::<&AssociatedEntity>(entity)
                     .map_or(Entity::DANGLING, |x| x.associate),
             );
         }
 
         let mut mu_map = HashMap::new();
-        for (entity, (_line, parent)) in self.world.query::<(&LinePathComponent, &Parent)>().iter()
+        for (entity, (_line, parent)) in self
+            .sim
+            .world()
+            .query::<(&LinePathComponent, &Parent)>()
+            .iter()
         {
             let parent_entity = parent.id;
-            let parent_body_mu = self.world.get::<&Body>(parent_entity).unwrap().mu;
+            let parent_body_mu = self.sim.world().get::<&Body>(parent_entity).unwrap().mu;
 
             mu_map.insert(entity, parent_body_mu);
         }
@@ -2152,7 +1572,8 @@ impl Gameplay {
                 mean_anomaly_map.insert(entity, 0.0);
             } else {
                 let assoc_state = self
-                    .world
+                    .sim
+                    .world()
                     .get::<&State>(*assoc_entity)
                     .expect("the associated entity's gotta have state");
                 let mu = *mu_map.get(entity).unwrap();
@@ -2162,7 +1583,7 @@ impl Gameplay {
                     mean_anomaly_map.insert(entity, 0.0);
                 } else {
                     let mean_anomaly_0 = assoc_state.mean_anomaly(mu); // M at assoc_state.t = vertex 0
-                    let state_now = assoc_state.propagate(self.current_et.get(), mu).unwrap();
+                    let state_now = assoc_state.propagate(self.sim.clock().now(), mu).unwrap();
                     let mean_anomaly = state_now.mean_anomaly(mu);
                     mean_anomaly_map.insert(entity, mean_anomaly - mean_anomaly_0);
                 }
@@ -2170,11 +1591,15 @@ impl Gameplay {
         }
 
         let mut proximity_alphas = HashMap::new();
-        for (entity, (_line, _parent)) in self.world.query::<(&LinePathComponent, &Parent)>().iter()
+        for (entity, (_line, _parent)) in self
+            .sim
+            .world()
+            .query::<(&LinePathComponent, &Parent)>()
+            .iter()
         {
             let assoc_entity = *assoc_entity_map.get(&entity).unwrap();
             let assoc_planet =
-                get_ancestor(&self.world, assoc_entity).unwrap_or(self.selection.bodies[0]);
+                get_ancestor(self.sim.world(), assoc_entity).unwrap_or(self.selection.bodies[0]);
 
             let camera_dist =
                 (pos_map.get(&closest_body).unwrap() - self.camera_3d.world_pos).norm();
@@ -2195,7 +1620,8 @@ impl Gameplay {
 
         // Set the origins of the line paths wrt the parent world positions
         for (entity, (line, world_pos, parent)) in
-            self.world
+            self.sim
+                .world_mut()
                 .query_mut::<(&mut LinePathComponent, &mut WorldPosition, &Parent)>()
         {
             let parent_pos = pos_map.get(&parent.id).unwrap();
@@ -2229,7 +1655,7 @@ impl Gameplay {
 
     fn get_selected_body_radius(&self) -> Option<f64> {
         let entity = self.selection.selected_entity()?;
-        let mut q = self.world.query_one::<&Body>(entity).ok()?;
+        let mut q = self.sim.world().query_one::<&Body>(entity).ok()?;
         let body = q.get()?;
         Some(body.body_radius)
     }
@@ -2274,7 +1700,8 @@ impl Gameplay {
         app.renderer.set_color(vec4(1.0, 1.0, 1.0, 1.0));
 
         for (entity, (world_pos, _model)) in self
-            .world
+            .sim
+            .world()
             .query::<hecs::Without<(&WorldPosition, &ModelComponent), &SurfaceTile>>()
             .iter()
         {
@@ -2285,7 +1712,8 @@ impl Gameplay {
                     size: vec2(2.0, 2.0),
                 };
                 let radius = self
-                    .world
+                    .sim
+                    .world()
                     .get::<&Body>(entity)
                     .map(|b| b.body_radius)
                     .unwrap_or(0.0);
@@ -2303,7 +1731,7 @@ impl Gameplay {
         let dist = relative_pos.norm();
         let dir = relative_pos / dist;
 
-        for (other, (opos, obody)) in self.world.query::<(&WorldPosition, &Body)>().iter() {
+        for (other, (opos, obody)) in self.sim.world().query::<(&WorldPosition, &Body)>().iter() {
             if other == entity {
                 continue; // body never occludes itself
             }
@@ -2365,8 +1793,8 @@ impl Gameplay {
 
         // a selected building resolves to the tile it stands on
         if let (Ok(tile), Ok(parent)) = (
-            self.world.get::<&SurfaceTile>(sel),
-            self.world.get::<&Parent>(sel),
+            self.sim.world().get::<&SurfaceTile>(sel),
+            self.sim.world().get::<&Parent>(sel),
         ) {
             return Some((parent.id, tile.index as usize));
         }
@@ -2388,14 +1816,14 @@ impl Gameplay {
     }
 
     fn sync_panel(&mut self, app: &App) {
-        let now = self.current_et.get();
+        let now = self.sim.clock().now();
 
         let footer_view = FooterView {
             now,
-            paused: self.paused,
-            speed_label: self.sim_speed.rate_label(),
-            can_speed_up: self.sim_speed.can_speed_up(),
-            can_slow_down: self.sim_speed.can_slow_down(),
+            paused: self.sim.clock().paused(),
+            speed_label: self.sim.clock().rate_label(),
+            can_speed_up: self.sim.clock().can_speed_up(),
+            can_slow_down: self.sim.clock().can_slow_down(),
         };
         if self.footer.sync(app, &footer_view) {
             // The side panel's height depends on the footer's
@@ -2407,8 +1835,8 @@ impl Gameplay {
             self.gui_built_for = key;
             let ctx = PanelCtx {
                 app,
-                world: &self.world,
-                parts: &self.parts,
+                world: self.sim.world(),
+                parts: self.sim.parts(),
                 now,
                 controls_enabled: &self.controls_enabled,
             };
@@ -2419,12 +1847,12 @@ impl Gameplay {
         }
 
         for binding in &self.gui_bindings {
-            binding.sync(&self.world, now);
+            binding.sync(self.sim.world(), now);
         }
     }
 
     fn tile_outline_vertices(&self, body: Entity, index: usize) -> Option<Vec<f32>> {
-        let mut q = self.world.query_one::<(&Body, &TileMap)>(body).ok()?;
+        let mut q = self.sim.world().query_one::<(&Body, &TileMap)>(body).ok()?;
         let (b, tile_map) = q.get()?;
 
         let r = b.body_radius as f32 * 1.002;

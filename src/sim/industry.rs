@@ -6,10 +6,15 @@ use hecs::{Entity, World};
 use crate::{
     astro::epoch::EphemerisTime,
     sim::{
-        docking::{free_ports, Docking, PortHost},
-        hierarchy::Parent,
-        parts::{PartCost, PartInventory, PartRegistry},
-        resources::{commit_station, station_resource_totals, take_resource, Resource},
+        docking::{free_ports, next_free_port, Docking, PortHost},
+        hierarchy::{Named, Parent},
+        parts::{ModuleSpec, PartCost, PartDef, PartInventory, PartRegistry},
+        propulsion::spawn_craft,
+        resources::{
+            add_resource, commit_station, station_resource_totals, take_resource, Miner, Resource,
+            ResourceStore,
+        },
+        SimEffect,
     },
 };
 
@@ -232,4 +237,128 @@ pub fn commit_pending_builds(world: &World, parts: &PartRegistry, now: Ephemeris
     }
 }
 
-// TODO: Sim half of complete_due_jobs & deliver_craft
+pub fn complete_due_jobs(
+    world: &mut World,
+    parts: &PartRegistry,
+    now: EphemerisTime,
+    effects: &mut Vec<SimEffect>,
+) {
+    let done: Vec<(Entity, u64)> = world
+        .query::<&Factory>()
+        .iter()
+        .filter_map(|(e, f)| {
+            let job = f.current_job.as_ref()?;
+            (job.energy_at(f, now) >= job.energy_total - f.power_watts).then_some((e, job.part_id))
+        })
+        .collect();
+
+    for (fab, part_id) in done {
+        effects.push(SimEffect::Focus { entity: fab });
+
+        let parent = world.get::<&Parent>(fab).unwrap().id;
+        let def = parts.get(part_id).unwrap().clone();
+
+        commit_station(world, parent, now);
+
+        // Add any byproducts
+        for (r, amt) in &def.byproducts {
+            add_resource(world, parent, *r, *amt, now);
+        }
+
+        // For now just eject the stage
+        if def.cost.ports_required > 0 {
+            let host_port = { world.get::<&Factory>(fab).unwrap().reserved_port.unwrap() };
+            deliver_craft(world, parent, &def, host_port, now, effects);
+        } else {
+            let mut part_inventory = world.get::<&mut PartInventory>(parent).unwrap();
+            part_inventory.add(part_id, 1);
+        }
+
+        // clear job so that factory becomes idle
+        if let Ok(mut f) = world.get::<&mut Factory>(fab) {
+            f.current_job = None;
+            f.reserved_port = None
+        }
+    }
+}
+
+fn deliver_craft(
+    world: &mut World,
+    station: Entity,
+    def: &PartDef,
+    host_port: u32,
+    now: EphemerisTime,
+    effects: &mut Vec<SimEffect>,
+) {
+    let parent = *world.get::<&Parent>(station).unwrap();
+
+    let craft = spawn_craft(
+        def.instantiate_craft(),
+        Named {
+            name: def.name.clone(),
+        },
+        parent,
+        world,
+    );
+    effects.push(SimEffect::CraftSpawned { craft });
+
+    world
+        .insert_one(
+            craft,
+            PortHost {
+                dock_gen: 0,
+                ports: def.ports,
+            },
+        )
+        .unwrap();
+
+    for (port, spec) in def.modules.iter().enumerate() {
+        let docking = Docking {
+            host: craft,
+            host_port: port as u32,
+            own_port: 0 as u32, // TODO: This will work for modules now, but maybe break if modules get multiple docking ports
+        };
+        let parent = Parent { id: craft };
+        match *spec {
+            ModuleSpec::Store {
+                resource,
+                amount,
+                capacity,
+            } => world.spawn((
+                docking,
+                ResourceStore {
+                    resource,
+                    amount,
+                    capacity,
+                    amount_et: now,
+                },
+                parent,
+            )),
+            ModuleSpec::Miner {
+                power_watts,
+                kg_per_s,
+            } => world.spawn((
+                docking,
+                Miner {
+                    enabled: false,
+                    kg_per_s,
+                    power_watts,
+                },
+                parent,
+            )),
+        };
+    }
+
+    let own_port = next_free_port(world, craft).expect("gotta have a port babey");
+
+    world
+        .insert_one(
+            craft,
+            Docking {
+                host: station,
+                host_port,
+                own_port,
+            },
+        )
+        .unwrap();
+}

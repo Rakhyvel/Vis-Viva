@@ -54,6 +54,38 @@ impl Clock {
     pub fn slow_down(&mut self) {
         self.speed_idx = self.speed_idx.saturating_sub(1);
     }
-}
 
-// TODO: Incorporate with Sim, next_stop(&Sim) combining the next event, resevoir limit and job completion
+    pub fn now(&self) -> EphemerisTime {
+        self.now
+    }
+
+    pub fn paused(&self) -> bool {
+        self.paused
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    pub fn set_run_until(&mut self, run_until: Option<EphemerisTime>) {
+        self.run_until = run_until;
+    }
+
+    /// Advance by one frame at the current rate. Returns Some(t) if we hit run_until and paused there
+    pub fn advance(&mut self, real_dt: f64) -> Option<EphemerisTime> {
+        let mut t = self.now + EphemerisTime::from_secs(real_dt * self.get_rate());
+        let stopped = self.run_until.is_some_and(|stop| t >= stop);
+        if stopped {
+            t = self.run_until.unwrap();
+            self.paused = true;
+        }
+        self.now = t;
+        stopped.then_some(t)
+    }
+
+    /// Pause and forget the next stop
+    pub fn stop(&mut self) {
+        self.paused = true;
+        self.run_until = None
+    }
+}

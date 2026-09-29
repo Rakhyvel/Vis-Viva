@@ -8,7 +8,7 @@ use crate::{
     sim::{
         docking::dock_tree,
         hierarchy::Named,
-        resources::{station_resource_totals, transferable, Resource},
+        resources::{station_resource_totals, transferable, Pool, Resource},
     },
     ui::{
         button::Button,
@@ -22,12 +22,6 @@ use crate::{
         widget::{recv_msgs, Widget},
     },
 };
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Pool {
-    pub host: Entity,
-    pub resource: Resource,
-}
 
 #[derive(Clone, Debug)]
 enum TransferMessages {

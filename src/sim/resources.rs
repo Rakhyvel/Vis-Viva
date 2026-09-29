@@ -45,6 +45,12 @@ pub struct ResourceStore {
     pub amount_et: EphemerisTime,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pool {
+    pub host: Entity,
+    pub resource: Resource,
+}
+
 fn stores_of(world: &World, station: Entity, r: Resource) -> Vec<Entity> {
     world
         .query::<(&Docking, &ResourceStore)>()
