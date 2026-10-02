@@ -211,7 +211,7 @@ impl Sim {
         electrolyzer.enabled = !electrolyzer.enabled
     }
 
-    pub fn togle_miner(&mut self, e: Entity) {
+    pub fn toggle_miner(&mut self, e: Entity) {
         self.commit(self.host_of(e));
         let mut miner = self.world().get::<&mut Miner>(e).unwrap();
         miner.enabled = !miner.enabled

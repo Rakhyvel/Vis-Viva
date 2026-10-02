@@ -29,7 +29,7 @@ use crate::{
         game_over::GameOverUi,
         maneuver::ManeuverModal,
         panel::{self, panel_structure_bits, CommandMessages, PanelCtx},
-        timeline::{MarkKind, TimelineMark},
+        timeline::{self},
         transfer::{TransferResult, TransferUi},
         Binding,
     },
@@ -37,13 +37,12 @@ use crate::{
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
         docking::{Docking, PortHost},
-        events::Event,
         hierarchy::{get_ancestor, Named, Parent},
-        industry::{projected_completion, Factory},
+        industry::Factory,
         life_support::Station,
         parts::{id_hash, PartInventory, PartRegistry},
         propulsion::{spawn_craft, Craft},
-        resources::{next_reservoir_limits, Electrolyzer, Resource, ResourceStore, SolarPanel},
+        resources::{Electrolyzer, Resource, ResourceStore, SolarPanel},
         Sim, SimEffect,
     },
     ui::{
@@ -344,7 +343,7 @@ impl Scene for Gameplay {
         self.sync_selected_tile(app);
         self.line_path_system(app);
         self.sync_models(app);
-        let marks = self.build_marks();
+        let marks = timeline::build_marks(&self.sim);
         self.footer.set_marks(marks);
         self.sync_panel(app);
 
@@ -1059,148 +1058,6 @@ impl Gameplay {
                         .show(&name, cause, self.sim.clock().now(), app);
                 }
             }
-        }
-    }
-
-    fn build_marks(&self) -> Vec<TimelineMark> {
-        // Add hard events from the event queue
-        let mut marks: Vec<TimelineMark> = self
-            .sim
-            .events()
-            .events
-            .iter()
-            .flat_map(|(et, events)| {
-                let t = *et;
-                events.iter().filter_map(move |event| {
-                    let (subject, detail) = self.craft_name_from_event(event);
-                    Some(TimelineMark {
-                        t,
-                        kind: MarkKind::from_event(event)?,
-                        subject,
-                        detail,
-                    })
-                })
-            })
-            .collect();
-
-        // Add pending projected factory completion events
-        for (fab, (_, f)) in self.sim.world().query::<(&Docking, &Factory)>().iter() {
-            let (t, part_id) = if let Some(part_id) = f.pending_job {
-                (
-                    projected_completion(
-                        self.sim.world(),
-                        fab,
-                        self.sim.parts(),
-                        self.sim.clock().now(),
-                    )
-                    .unwrap(),
-                    part_id,
-                )
-            } else if let Some(current_job) = &f.current_job {
-                let Some(completion_et) = current_job.completion_et(f, self.sim.clock().now())
-                else {
-                    continue;
-                };
-                (completion_et, current_job.part_id)
-            } else {
-                continue;
-            };
-
-            let (subject, detail) = self.craft_name_from_event(&Event::FactoryComplete {
-                craft: fab,
-                part_id,
-            });
-
-            marks.push(TimelineMark {
-                t,
-                kind: MarkKind::FactoryComplete,
-                subject,
-                detail,
-            });
-        }
-
-        // Add projected reservoir limit events, Depleted and Filled
-        for (entity, (_, named)) in self.sim.world().query::<(&PortHost, &Named)>().iter() {
-            for (et, resource, rate) in next_reservoir_limits(
-                self.sim.world(),
-                entity,
-                self.sim.parts(),
-                self.sim.clock().now(),
-                true,
-            ) {
-                if rate < 0.0 {
-                    marks.push(TimelineMark {
-                        t: et,
-                        kind: MarkKind::Critical,
-                        subject: named.name.clone(),
-                        detail: format!("{} Depleted", resource.long_name()),
-                    })
-                } else {
-                    marks.push(TimelineMark {
-                        t: et,
-                        kind: MarkKind::Good,
-                        subject: named.name.clone(),
-                        detail: format!("{} Filled", resource.long_name()),
-                    })
-                }
-            }
-        }
-
-        // Add projected mission burns (burns, SOI crossings, etc)
-        for (_, (craft, named)) in self.sim.world().query::<(&Craft, &Named)>().iter() {
-            let Some(command) = &craft.command else {
-                continue;
-            };
-            if craft.command_scheduled {
-                continue; // already in the event queue, don't re-add it
-            }
-            for burn in command.burn_schedule() {
-                marks.push(TimelineMark {
-                    t: burn.t(),
-                    kind: burn.purpose.into(),
-                    subject: named.name.clone(),
-                    detail: burn.desc.to_string(),
-                });
-            }
-            for (label, et) in command.transition_schedule() {
-                marks.push(TimelineMark {
-                    t: et,
-                    kind: MarkKind::SoiChange,
-                    subject: named.name.clone(),
-                    detail: label.to_string(),
-                });
-            }
-        }
-
-        marks.sort_by_key(|m| m.t);
-        marks
-    }
-
-    fn craft_name_from_event(&self, event: &Event) -> (String, String) {
-        match event {
-            Event::SoiChange { craft, desc, .. } | Event::Burn { craft, desc, .. } => {
-                let named = self.sim.world().get::<&Named>(*craft).unwrap();
-                (named.name.clone(), desc.to_string())
-            }
-
-            Event::Launch { craft } | Event::Land { craft } | Event::Dock { craft, .. } => {
-                let named = self.sim.world().get::<&Named>(*craft).unwrap();
-                (named.name.clone(), "???".to_string())
-            }
-
-            Event::FactoryComplete { craft, part_id } => {
-                let parent = self.sim.world().get::<&Parent>(*craft).unwrap().id;
-                let named = self.sim.world().get::<&Named>(parent).unwrap();
-                let part_def = self
-                    .sim
-                    .parts()
-                    .get(*part_id)
-                    .map_or("???", |p| p.name.as_str());
-                (named.name.clone(), part_def.to_string())
-            }
-
-            // No real craft name
-            Event::CompleteCommand { .. } => (String::from(""), String::from("")),
         }
     }
 

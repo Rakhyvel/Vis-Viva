@@ -10,7 +10,16 @@ use nalgebra_glm::{vec2, vec4, Vec2, Vec4};
 
 use crate::{
     astro::epoch::EphemerisTime,
-    sim::{events::Event, mission::BurnPurpose},
+    sim::{
+        docking::{Docking, PortHost},
+        events::Event,
+        hierarchy::{Named, Parent},
+        industry::{projected_completion, Factory},
+        mission::BurnPurpose,
+        propulsion::Craft,
+        resources::next_reservoir_limits,
+        Sim,
+    },
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
 };
 
@@ -81,6 +90,135 @@ pub fn marks_digest(marks: &[TimelineMark]) -> u64 {
         acc = acc.wrapping_add(h.finish());
     }
     acc
+}
+
+pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
+    // Add hard events from the event queue
+    let mut marks: Vec<TimelineMark> = sim
+        .events()
+        .events
+        .iter()
+        .flat_map(|(et, events)| {
+            let t = *et;
+            events.iter().filter_map(move |event| {
+                let (subject, detail) = craft_name_from_event(sim, event);
+                Some(TimelineMark {
+                    t,
+                    kind: MarkKind::from_event(event)?,
+                    subject,
+                    detail,
+                })
+            })
+        })
+        .collect();
+
+    // Add pending projected factory completion events
+    for (fab, (_, f)) in sim.world().query::<(&Docking, &Factory)>().iter() {
+        let (t, part_id) = if let Some(part_id) = f.pending_job {
+            (
+                projected_completion(sim.world(), fab, sim.parts(), sim.clock().now()).unwrap(),
+                part_id,
+            )
+        } else if let Some(current_job) = &f.current_job {
+            let Some(completion_et) = current_job.completion_et(f, sim.clock().now()) else {
+                continue;
+            };
+            (completion_et, current_job.part_id)
+        } else {
+            continue;
+        };
+
+        let (subject, detail) = craft_name_from_event(
+            sim,
+            &Event::FactoryComplete {
+                craft: fab,
+                part_id,
+            },
+        );
+
+        marks.push(TimelineMark {
+            t,
+            kind: MarkKind::FactoryComplete,
+            subject,
+            detail,
+        });
+    }
+
+    // Add projected reservoir limit events, Depleted and Filled
+    for (entity, (_, named)) in sim.world().query::<(&PortHost, &Named)>().iter() {
+        for (et, resource, rate) in
+            next_reservoir_limits(sim.world(), entity, sim.parts(), sim.clock().now(), true)
+        {
+            if rate < 0.0 {
+                marks.push(TimelineMark {
+                    t: et,
+                    kind: MarkKind::Critical,
+                    subject: named.name.clone(),
+                    detail: format!("{} Depleted", resource.long_name()),
+                })
+            } else {
+                marks.push(TimelineMark {
+                    t: et,
+                    kind: MarkKind::Good,
+                    subject: named.name.clone(),
+                    detail: format!("{} Filled", resource.long_name()),
+                })
+            }
+        }
+    }
+
+    // Add projected mission burns (burns, SOI crossings, etc)
+    for (_, (craft, named)) in sim.world().query::<(&Craft, &Named)>().iter() {
+        let Some(command) = &craft.command else {
+            continue;
+        };
+        if craft.command_scheduled {
+            continue; // already in the event queue, don't re-add it
+        }
+        for burn in command.burn_schedule() {
+            marks.push(TimelineMark {
+                t: burn.t(),
+                kind: burn.purpose.into(),
+                subject: named.name.clone(),
+                detail: burn.desc.to_string(),
+            });
+        }
+        for (label, et) in command.transition_schedule() {
+            marks.push(TimelineMark {
+                t: et,
+                kind: MarkKind::SoiChange,
+                subject: named.name.clone(),
+                detail: label.to_string(),
+            });
+        }
+    }
+
+    marks.sort_by_key(|m| m.t);
+    marks
+}
+
+fn craft_name_from_event(sim: &Sim, event: &Event) -> (String, String) {
+    match event {
+        Event::SoiChange { craft, desc, .. } | Event::Burn { craft, desc, .. } => {
+            let named = sim.world().get::<&Named>(*craft).unwrap();
+            (named.name.clone(), desc.to_string())
+        }
+
+        Event::Launch { craft } | Event::Land { craft } | Event::Dock { craft, .. } => {
+            let named = sim.world().get::<&Named>(*craft).unwrap();
+            (named.name.clone(), "???".to_string())
+        }
+
+        Event::FactoryComplete { craft, part_id } => {
+            let parent = sim.world().get::<&Parent>(*craft).unwrap().id;
+            let named = sim.world().get::<&Named>(parent).unwrap();
+            let part_def = sim.parts().get(*part_id).map_or("???", |p| p.name.as_str());
+            (named.name.clone(), part_def.to_string())
+        }
+
+        // No real craft name
+        Event::CompleteCommand { .. } => (String::from(""), String::from("")),
+    }
 }
 
 impl From<BurnPurpose> for MarkKind {
