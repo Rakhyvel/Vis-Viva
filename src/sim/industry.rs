@@ -51,6 +51,30 @@ impl Factory {
         });
         Ok(())
     }
+
+    /// Flip on/off, banking the energy done so far so the job's progress survives being off
+    pub fn toggle(&mut self, now: EphemerisTime) {
+        let enabled = self.enabled;
+        let power = self.power_watts;
+        if let Some(job) = &mut self.current_job {
+            if enabled {
+                let dt = (now - job.energy_et).as_secs() as f32;
+                job.energy_done = (job.energy_done + power * dt).min(job.energy_total);
+            }
+            job.energy_et = now;
+        }
+        self.enabled = !enabled
+    }
+
+    pub fn cancel_queued(&mut self) {
+        self.pending_job = None;
+        self.reserved_port = None
+    }
+
+    pub fn cancel_active(&mut self) {
+        self.current_job = None;
+        self.reserved_port = None
+    }
 }
 
 impl FactoryJob {
@@ -361,4 +385,50 @@ fn deliver_craft(
             },
         )
         .unwrap();
+}
+
+/// Queue `part_id` on a fabricator. It starts, and gets paid for, at the next Play
+pub fn queue_build(world: &World, parts: &PartRegistry, fab: Entity, part_id: u64) {
+    let host = world.get::<&Docking>(fab).unwrap().host;
+    let ports = parts.get(part_id).map_or(0, |d| d.cost.ports_required);
+    let reserved_port = if ports > 0 {
+        next_free_port(world, host)
+    } else {
+        None
+    };
+
+    let mut factory = world.get::<&mut Factory>(fab).unwrap();
+    factory.pending_job = Some(part_id);
+    factory.reserved_port = reserved_port
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toggling_off_banks_progress() {
+        let t0 = EphemerisTime::epoch();
+        let mut fab = Factory {
+            current_job: Some(FactoryJob {
+                part_id: 0,
+                energy_total: 1000.0,
+                energy_done: 0.0,
+                energy_et: t0,
+            }),
+            pending_job: None,
+            power_watts: 10.0,
+            enabled: true,
+            reserved_port: None,
+        };
+
+        let t1 = t0 + EphemerisTime::from_secs(30.0);
+        fab.toggle(t1);
+
+        assert!(!fab.enabled);
+        // 30 s at 10 W was banked, and nothing accrues while it's off
+        let later = t1 + EphemerisTime::from_secs(100.0);
+        let job = fab.current_job.as_ref().unwrap();
+        assert_eq!(job.energy_at(&fab, later), 300.0);
+    }
 }

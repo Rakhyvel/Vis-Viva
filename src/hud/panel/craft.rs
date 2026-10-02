@@ -137,7 +137,7 @@ fn mission_section(ctx: &PanelCtx, selected: Entity) -> Section {
         out.push(
             Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Plan Mission...")
                 .use_style_accented(&STYLE)
-                .on_click(CommandMessages::OpenManeuver),
+                .on_click(CommandMessages::OpenManeuver { craft: selected }),
         )
     };
     out.push(HRule::new(STYLE.border, 1.0, WIDTH));

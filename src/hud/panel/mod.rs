@@ -46,8 +46,8 @@ pub enum CommandMessages {
     CancelCommand { craft: Entity },
     Undock { entity: Entity },
     SelectEntity { entity: Entity },
-    OpenManeuver, // TODO: Should store the entity rather than relying on selected
-    OpenTransfer, // TODO: Should store the entity rather than relying on selected
+    OpenManeuver { craft: Entity },
+    OpenTransfer { craft: Entity },
 }
 
 /// Everything the panel builders read. Borrowed from Gameplay for the duration of one rebuild.

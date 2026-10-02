@@ -19,12 +19,7 @@ use nalgebra_glm::{vec2, vec3, vec4, DVec3, Vec2, Vec3};
 use sdl2::keyboard::Scancode;
 
 use crate::{
-    astro::{
-        epoch::EphemerisTime,
-        maneuver::sphere_of_influence,
-        state::State,
-        units::{METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR, SUN_MU},
-    },
+    astro::{epoch::EphemerisTime, maneuver::sphere_of_influence, state::State, units::SUN_MU},
     components::craft::{attach_craft_model, redraw_orbit, replace_line_path, AssociatedEntity},
     container,
     generation::{lexicon::Lexicon, polygon},
@@ -41,17 +36,14 @@ use crate::{
     scenes::starbox::Starbox,
     sim::{
         bodies::{Body, Category, SurfaceTile, TileMap, TileSets},
-        docking::{next_free_port, Docking, PortHost},
+        docking::{Docking, PortHost},
         events::Event,
         hierarchy::{get_ancestor, Named, Parent},
         industry::{projected_completion, Factory},
         life_support::Station,
         parts::{id_hash, PartInventory, PartRegistry},
         propulsion::{spawn_craft, Craft},
-        resources::{
-            commit_station, next_reservoir_limits, transfer_resource, Electrolyzer, Miner,
-            Resource, ResourceStore, SolarPanel,
-        },
+        resources::{next_reservoir_limits, Electrolyzer, Resource, ResourceStore, SolarPanel},
         Sim, SimEffect,
     },
     ui::{
@@ -254,48 +246,19 @@ impl Scene for Gameplay {
             part_id,
         }) = self.fabricator_ui.update(app)
         {
-            let host = self.sim.world().get::<&Docking>(fabricator).unwrap().host;
-            let ports = self
-                .sim
-                .parts()
-                .get(part_id)
-                .map_or(0, |d| d.cost.ports_required);
-
-            let reserved_port = if ports > 0 {
-                next_free_port(self.sim.world(), host)
-            } else {
-                None
-            };
-
-            let mut factory = self.sim.world().get::<&mut Factory>(fabricator).unwrap();
-            factory.pending_job = Some(part_id);
-            factory.reserved_port = reserved_port;
+            self.sim.queue_build(fabricator, part_id);
         }
 
         let now = self.sim.clock().now();
 
-        if let Some(command) = self.maneuver_ui.update(now, self.sim.world(), app) {
-            if let Some(selected) = self.selection.selected_entity() {
-                self.sim
-                    .world()
-                    .get::<&mut Craft>(selected)
-                    .unwrap()
-                    .command = Some(command);
-            }
+        if let Some((craft, command)) = self.maneuver_ui.update(now, self.sim.world(), app) {
+            self.sim.assign_command(craft, command);
         }
 
         if let Some(TransferResult { from, to }) =
             self.transfer_ui.update(now, self.sim.world(), app)
         {
-            self.commit_station();
-            transfer_resource(
-                self.sim.world(),
-                from.host,
-                to.host,
-                from.resource,
-                f32::MAX,
-                now,
-            );
+            self.sim.transfer(from, to);
             self.transfer_ui.rebuild(now, self.sim.world(), app);
         }
 
@@ -313,89 +276,38 @@ impl Scene for Gameplay {
                         );
                     }
                     CommandMessages::CancelQueuedFabricator { fabricator_entity } => {
-                        let mut factory = self
-                            .sim
-                            .world()
-                            .get::<&mut Factory>(fabricator_entity)
-                            .unwrap();
-                        factory.pending_job = None;
-                        factory.reserved_port = None;
+                        self.sim.cancel_queued_build(fabricator_entity);
                     }
                     CommandMessages::CancelActiveFabricator { fabricator_entity } => {
-                        let mut factory = self
-                            .sim
-                            .world()
-                            .get::<&mut Factory>(fabricator_entity)
-                            .unwrap();
-                        factory.current_job = None;
-                        factory.reserved_port = None;
+                        self.sim.cancel_active_build(fabricator_entity);
                     }
                     CommandMessages::ToggleFabricator { fabricator_entity } => {
-                        self.commit_station();
-                        let now = self.sim.clock().now();
-                        let mut factory = self
-                            .sim
-                            .world()
-                            .get::<&mut Factory>(fabricator_entity)
-                            .unwrap();
-                        let enabled = factory.enabled;
-                        let power = factory.power_watts;
-                        if let Some(job) = &mut factory.current_job {
-                            if enabled {
-                                // bank the energy done before turning off the thing
-                                let dt = (now - job.energy_et).as_secs() as f32;
-                                job.energy_done =
-                                    (job.energy_done + power * dt).min(job.energy_total);
-                            }
-                            job.energy_et = now;
-                        }
-                        factory.enabled = !factory.enabled;
+                        self.sim.toggle_fabricator(fabricator_entity);
                     }
                     CommandMessages::CancelCommand { craft } => {
-                        let mut craft = self.sim.world().get::<&mut Craft>(craft).unwrap();
-                        craft.command = None;
+                        self.sim.cancel_command(craft);
                     }
                     CommandMessages::ToggleElectrolyzer {
                         electrolyzer_entity,
                     } => {
-                        self.commit_station();
-                        let mut electrolyzer = self
-                            .sim
-                            .world()
-                            .get::<&mut Electrolyzer>(electrolyzer_entity)
-                            .unwrap();
-                        electrolyzer.enabled = !electrolyzer.enabled;
+                        self.sim.toggle_electrolyzer(electrolyzer_entity);
                     }
                     CommandMessages::ToggleMiner { miner_entity } => {
-                        self.commit_station();
-                        let mut miner = self.sim.world().get::<&mut Miner>(miner_entity).unwrap();
-                        miner.enabled = !miner.enabled;
+                        self.sim.toggle_miner(miner_entity);
                     }
                     CommandMessages::Undock { entity } => {
-                        self.undock(entity, app);
+                        self.sim.undock(entity);
                     }
                     CommandMessages::SelectEntity { entity } => {
                         self.selection.set_selected(entity, app.seconds as f64);
                     }
-                    CommandMessages::OpenManeuver => {
-                        if let Some(selected) = self.selection.selected_entity() {
-                            self.maneuver_ui.show(
-                                selected,
-                                self.sim.clock().now(),
-                                self.sim.world(),
-                                app,
-                            );
-                        }
+                    CommandMessages::OpenManeuver { craft } => {
+                        self.maneuver_ui
+                            .show(craft, self.sim.clock().now(), self.sim.world(), app);
                     }
-                    CommandMessages::OpenTransfer => {
-                        if let Some(selected) = self.selection.selected_entity() {
-                            self.transfer_ui.show(
-                                selected,
-                                self.sim.clock().now(),
-                                self.sim.world(),
-                                app,
-                            );
-                        }
+                    CommandMessages::OpenTransfer { craft } => {
+                        self.transfer_ui
+                            .show(craft, self.sim.clock().now(), self.sim.world(), app);
                     }
                 }
             }
@@ -1101,49 +1013,6 @@ impl Gameplay {
             self.sim.events().version(),
             panel_structure_bits(self.sim.world()),
         ))
-    }
-
-    fn undock(&mut self, craft: Entity, app: &App) {
-        const SEPARATION_DV: f64 = 0.1 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
-
-        let now = self.sim.clock().now();
-
-        let Ok(host) = self.sim.world().get::<&Docking>(craft).map(|d| d.host) else {
-            return; // not docked?!
-        };
-        let parent = self.sim.world().get::<&Parent>(craft).unwrap().id;
-        let parent_mu = self.sim.world().get::<&Body>(parent).unwrap().mu;
-
-        // Set the new state of the craft to be the host state + a little radial boost
-        let Ok(host_state) = self.sim.world().get::<&State>(host).map(|s| *s) else {
-            return; // host wasn't orbiting
-        };
-        let Ok(mut new_state) = host_state.propagate(now, parent_mu) else {
-            return;
-        };
-        new_state.v += new_state.r.normalize() * SEPARATION_DV;
-
-        // Commit resource flows now
-        commit_station(self.sim.world(), host, now);
-        commit_station(self.sim.world(), craft, now);
-
-        self.sim.world_mut().remove_one::<Docking>(craft).ok();
-        self.sim.world_mut().insert_one(craft, new_state).unwrap();
-
-        redraw_orbit(self.sim.world_mut(), &app.renderer, craft, None);
-
-        if let Ok(mut ph) = self.sim.world().get::<&mut PortHost>(craft) {
-            ph.dock_gen += 1;
-        }
-        if let Ok(mut ph) = self.sim.world().get::<&mut PortHost>(host) {
-            ph.dock_gen += 1;
-        }
-    }
-
-    fn commit_station(&self) {
-        for (station, _) in self.sim.world().query::<&PortHost>().iter() {
-            commit_station(self.sim.world(), station, self.sim.clock().now());
-        }
     }
 
     fn sync_models(&mut self, app: &App) {

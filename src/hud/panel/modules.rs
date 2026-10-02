@@ -52,7 +52,7 @@ pub fn module_list(ctx: &PanelCtx, station: Entity) -> Section {
             Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Transfer")
                 .use_style(&STYLE)
                 .bound_active(ctx.controls_enabled.clone())
-                .on_click(CommandMessages::OpenTransfer),
+                .on_click(CommandMessages::OpenTransfer { craft: station }),
         );
     }
 

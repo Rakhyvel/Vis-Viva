@@ -6,14 +6,15 @@ use crate::{
     astro::epoch::EphemerisTime,
     sim::{
         clock::Clock,
-        docking::PortHost,
+        docking::{Docking, PortHost},
         events::EventQueue,
         hierarchy::{docked_position_system, landed_system, orbit_system},
         industry::Factory,
         life_support::Station,
         mission::Command,
         parts::PartRegistry,
-        resources::{next_reservoir_limits, Pool, Resource},
+        propulsion::Craft,
+        resources::{next_reservoir_limits, Electrolyzer, Miner, Pool, Resource},
     },
 };
 
@@ -176,44 +177,80 @@ impl Sim {
         self.clock.slow_down();
     }
 
+    /// Save `host`'s tank levels at the current time. Call before anything that changes its flow rate.
+    fn commit(&self, host: Entity) {
+        resources::commit_station(&self.world, host, self.clock.now());
+    }
+
+    fn host_of(&self, module: Entity) -> Entity {
+        self.world.get::<&Docking>(module).unwrap().host
+    }
+
     pub fn queue_build(&mut self, fab: Entity, part_id: u64) {
-        todo!()
+        industry::queue_build(&self.world, &self.parts, fab, part_id);
     }
 
     pub fn cancel_queued_build(&mut self, fab: Entity) {
-        todo!()
+        self.world.get::<&mut Factory>(fab).unwrap().cancel_queued();
     }
 
     pub fn cancel_active_build(&mut self, fab: Entity) {
-        todo!()
+        self.commit(self.host_of(fab)); // the job's power draw stops
+        self.world.get::<&mut Factory>(fab).unwrap().cancel_active();
     }
 
     pub fn toggle_fabricator(&mut self, fab: Entity) {
-        todo!()
+        self.commit(self.host_of(fab));
+        let now = self.clock.now();
+        self.world.get::<&mut Factory>(fab).unwrap().toggle(now);
     }
 
     pub fn toggle_electrolyzer(&mut self, e: Entity) {
-        todo!()
+        self.commit(self.host_of(e));
+        let mut electrolyzer = self.world.get::<&mut Electrolyzer>(e).unwrap();
+        electrolyzer.enabled = !electrolyzer.enabled
     }
 
     pub fn togle_miner(&mut self, e: Entity) {
-        todo!()
+        self.commit(self.host_of(e));
+        let mut miner = self.world().get::<&mut Miner>(e).unwrap();
+        miner.enabled = !miner.enabled
     }
 
     pub fn assign_command(&mut self, craft: Entity, cmd: Command) {
-        todo!()
+        self.world.get::<&mut Craft>(craft).unwrap().command = Some(cmd)
     }
 
     pub fn cancel_command(&mut self, craft: Entity) {
-        todo!()
+        self.world.get::<&mut Craft>(craft).unwrap().command = None
     }
 
     pub fn transfer(&mut self, from: Pool, to: Pool) {
-        todo!()
+        // Moving resources can affect modules, so commit both ends first
+        self.commit(from.host);
+        self.commit(to.host);
+        resources::transfer_resource(
+            &self.world,
+            from.host,
+            to.host,
+            from.resource,
+            f32::MAX,
+            self.clock.now(),
+        );
     }
 
     pub fn undock(&mut self, craft: Entity) {
-        todo!()
+        let Ok(host) = self.world.get::<&Docking>(craft).map(|d| d.host) else {
+            return;
+        };
+        self.commit(host);
+        self.commit(craft);
+        if docking::undock(&mut self.world, craft, self.clock.now()) {
+            self.effects.push(SimEffect::OrbitChanged {
+                craft,
+                soi_radius: None,
+            })
+        }
     }
 
     pub fn drain_effects(&mut self) -> Vec<SimEffect> {

@@ -1,7 +1,17 @@
 ///! Ports and the dock-tree
 use hecs::{Entity, World};
 
-use crate::sim::{industry::Factory, propulsion::Craft};
+use crate::{
+    astro::{
+        epoch::EphemerisTime, state::State, units::METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR,
+    },
+    sim::{
+        bodies::Body,
+        hierarchy::{set_orbit, Parent},
+        industry::Factory,
+        propulsion::Craft,
+    },
+};
 
 /// This entity is attached to some port on `host` via one of our own ports
 pub struct Docking {
@@ -82,4 +92,30 @@ fn used_ports(world: &World, host: Entity) -> Vec<u32> {
     used
 }
 
-// TODO: undock(), once we can separate app from setting orbits
+pub fn undock(world: &mut World, craft: Entity, now: EphemerisTime) -> bool {
+    const SEPARATION_DV: f64 = 0.1 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
+
+    let Ok(host) = world.get::<&Docking>(craft).map(|d| d.host) else {
+        return false;
+    };
+    let parent = world.get::<&Parent>(craft).unwrap().id;
+    let parent_mu = world.get::<&Body>(parent).unwrap().mu;
+
+    let Ok(host_state) = world.get::<&State>(host).map(|s| *s) else {
+        return false; // host wasn't orbiting
+    };
+    let Ok(mut new_state) = host_state.propagate(now, parent_mu) else {
+        return false;
+    };
+    new_state.v += new_state.r.normalize() * SEPARATION_DV;
+
+    world.remove_one::<Docking>(craft).ok();
+    set_orbit(world, craft, new_state, parent);
+
+    for e in [craft, host] {
+        if let Ok(mut ph) = world.get::<&mut PortHost>(e) {
+            ph.dock_gen += 1
+        }
+    }
+    true
+}

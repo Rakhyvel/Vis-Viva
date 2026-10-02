@@ -222,7 +222,7 @@ impl ManeuverModal {
         current_et: EphemerisTime,
         world: &World,
         app: &App,
-    ) -> Option<Command> {
+    ) -> Option<(Entity, Command)> {
         let craft = self.craft?;
         for msg in recv_msgs(app, &mut self.modal) {
             match msg {
@@ -271,7 +271,7 @@ impl ManeuverModal {
                 ManeuverMessages::Confirm => {
                     self.porkchop = None;
                     self.modal.set_shown(false);
-                    return self.computed_plan.take();
+                    return self.computed_plan.take().map(|cmd| (craft, cmd));
                 }
             }
         }
