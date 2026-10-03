@@ -5,7 +5,6 @@ use std::{cell::Cell, collections::HashMap, rc::Rc};
 use apricot::{
     app::{App, Scene},
     bvh::BVH,
-    opengl::create_program,
 };
 use hecs::{Entity, World};
 use sdl2::keyboard::Scancode;
@@ -13,7 +12,7 @@ use sdl2::keyboard::Scancode;
 use crate::{
     astro::{epoch::EphemerisTime, state::State, units::SUN_MU},
     container,
-    generation::{lexicon::Lexicon, polygon},
+    generation::lexicon::Lexicon,
     hud::{
         fabricator::{FabricatorAction, FabricatorUi},
         footer::{Footer, FooterView, TurnMessages},
@@ -25,13 +24,14 @@ use crate::{
         Binding,
     },
     render::{
+        assets::load_assets,
         camera::{focus_point, CameraRig},
         orbit_lines::{redraw_orbit, replace_line_path, style_orbit_lines},
         picking::Picker,
         scene::{attach_craft_model, SceneRenderer},
     },
     sim::{
-        bodies::{Body, Category, TileSets},
+        bodies::{Body, Category},
         docking::{Docking, PortHost},
         hierarchy::{Named, ParentBody},
         industry::Factory,
@@ -45,22 +45,13 @@ use crate::{
 };
 
 use crate::{
-    components::{
-        body::{spawn_body, SceneObject},
-        icosphere,
-    },
+    components::body::{spawn_body, SceneObject},
     generation::solar_system_gen::{self},
     ui::{
         container::Container,
         widget::{recv_msgs, Widget},
     },
 };
-
-/// Object file data, used for meshes
-pub const QUAD_XY_DATA: &[u8] = include_bytes!("../../res/quad-xy.obj");
-pub const UV_DATA: &[u8] = include_bytes!("../../res/uv-sphere.obj");
-pub const CONE_DATA: &[u8] = include_bytes!("../../res/cone.obj");
-pub const CUBE_DATA: &[u8] = include_bytes!("../../res/cube.obj");
 
 /// Struct that contains info about the game state
 pub struct Gameplay {
@@ -356,170 +347,9 @@ impl Scene for Gameplay {
 
 impl Gameplay {
     /// Constructs a new Gameplay struct with everything setup
-    /// TODO: Most of this stuff will need to be moved to the init scene. Remind me to make an issue for this!
     pub fn new(app: &App) -> Self {
+        let tile_sets = load_assets(&app.renderer);
         let mut world = World::new();
-
-        // Add programs to the renderer
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/3d.vert"),
-                include_str!("../shaders/3d.frag"),
-            )
-            .unwrap(),
-            Some("3d"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/2d.vert"),
-                include_str!("../shaders/2d.frag"),
-            )
-            .unwrap(),
-            Some("2d"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/shadow.vert"),
-                include_str!("../shaders/shadow.frag"),
-            )
-            .unwrap(),
-            Some("shadow"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/2d.vert"),
-                include_str!("../shaders/solid-color.frag"),
-            )
-            .unwrap(),
-            Some("2d-solid"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/3d.vert"),
-                include_str!("../shaders/solid-color.frag"),
-            )
-            .unwrap(),
-            Some("3d-solid"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/line.vert"),
-                include_str!("../shaders/line.frag"),
-            )
-            .unwrap(),
-            Some("line"),
-        );
-        app.renderer.add_program(
-            create_program(
-                include_str!("../shaders/starbox.vert"),
-                include_str!("../shaders/starbox.frag"),
-            )
-            .unwrap(),
-            Some("starbox"),
-        );
-
-        // Setup the mesh manager
-        app.renderer
-            .add_mesh_from_obj(QUAD_XY_DATA, Some("quad-xy"));
-        app.renderer.add_mesh_from_obj(UV_DATA, Some("uv"));
-        app.renderer.add_mesh_from_obj(CONE_DATA, Some("cone"));
-        app.renderer.add_mesh_from_obj(CUBE_DATA, Some("cube"));
-
-        let ico_20 = icosphere::generate(0); // 20-face icosphere for dwarf bodies
-        let ico_80 = icosphere::generate(1); // 80-face icosphere for mars-like sub-earths
-        let ico_320 = icosphere::generate(2); // 320-face icosphere for large rocky bodies
-        app.renderer.add_mesh_from_verts(
-            ico_20.indices.clone(),
-            vec![&ico_20.positions, &ico_20.normals, &ico_20.uvs],
-            Some("ico-20"),
-        );
-        app.renderer.add_mesh_from_verts(
-            ico_80.indices.clone(),
-            vec![&ico_80.positions, &ico_80.normals, &ico_80.uvs],
-            Some("ico-80"),
-        );
-        app.renderer.add_mesh_from_verts(
-            ico_320.indices.clone(),
-            vec![&ico_320.positions, &ico_320.normals, &ico_320.uvs],
-            Some("ico-320"),
-        );
-        let tile_sets = TileSets {
-            dwarf: ico_20.tile_tris,
-            sub: ico_80.tile_tris,
-            large: ico_320.tile_tris,
-        };
-
-        for (i, name) in ["triangle", "square", "pentagon", "hexagon"]
-            .iter()
-            .enumerate()
-        {
-            let sides = i + 3;
-            let (indices, pos, normals, uvs) = polygon::ngon_mesh(sides as u32);
-            app.renderer
-                .add_mesh_from_verts(indices, vec![&pos, &normals, &uvs], Some(name));
-        }
-
-        for (i, name) in [
-            "triangle-outline",
-            "square-outline",
-            "pentagon-outline",
-            "hexagon-outline",
-            "septagon-outline",
-            "octagon-outline",
-        ]
-        .iter()
-        .enumerate()
-        {
-            let sides = i + 3;
-            let (indices, pos, normals, uvs) = polygon::ngon_ring_mesh(sides as u32, 0.875);
-            app.renderer
-                .add_mesh_from_verts(indices, vec![&pos, &normals, &uvs], Some(name));
-        }
-
-        // Setup the texture manager
-        app.renderer
-            .add_texture_from_png("res/sun.png", Some("sun"));
-        app.renderer
-            .add_texture_from_png("res/venus.png", Some("venus"));
-        app.renderer
-            .add_texture_from_png("res/earth.png", Some("earth"));
-        app.renderer
-            .add_texture_from_png("res/moon.png", Some("moon"));
-        app.renderer
-            .add_texture_from_png("res/jupiter.png", Some("jupiter"));
-        app.renderer
-            .add_texture_from_png("res/europa.png", Some("europa"));
-        app.renderer
-            .add_texture_from_png("res/uranus.png", Some("uranus"));
-        app.renderer
-            .add_texture_from_png("res/next-turn.png", Some("next-turn"));
-        app.renderer
-            .add_texture_from_png("res/next-turn-hover.png", Some("next-turn-hover"));
-        app.renderer
-            .add_texture_from_png("res/reticle.png", Some("reticle"));
-
-        // Setup the font manager
-        app.renderer
-            .add_font("res/Consolas.ttf", "font", 15, sdl2::ttf::FontStyle::NORMAL);
-        app.renderer.add_font(
-            "res/Consolas.ttf",
-            "font-small-bold",
-            16,
-            sdl2::ttf::FontStyle::BOLD,
-        );
-        app.renderer.add_font(
-            "res/Consolas.ttf",
-            "font-small-italic",
-            16,
-            sdl2::ttf::FontStyle::ITALIC,
-        );
-        app.renderer.add_font(
-            "res/Consolas.ttf",
-            "font-big",
-            21,
-            sdl2::ttf::FontStyle::BOLD,
-        );
-
         let mut bvh = BVH::<Entity>::new();
 
         let sun_entity = spawn_body(
@@ -739,9 +569,6 @@ impl Gameplay {
         let mut selection = SelectionState::new(crafts, bodies, buildings);
         selection.set_selected(station, app.seconds as f64 - 1.0);
 
-        let font = app.renderer.get_font_id_from_name("font").unwrap();
-        app.renderer.set_font(font);
-
         let mut retval = Self {
             sim: Sim::new(world, parts),
 
@@ -809,6 +636,7 @@ impl Gameplay {
                 }
                 SimEffect::OrbitCleared { craft } => {
                     replace_line_path(self.sim.world_mut(), &app.renderer, craft, None);
+                    self.sim.world_mut().remove_one::<State>(craft).ok();
                 }
                 SimEffect::CraftSpawned { craft } => {
                     attach_craft_model(

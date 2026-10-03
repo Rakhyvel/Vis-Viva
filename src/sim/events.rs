@@ -169,7 +169,6 @@ pub fn apply(world: &mut World, now: EphemerisTime, event: Event, effects: &mut 
                 let parent_body_mu = world.get::<&Body>(parent_id).unwrap().mu;
                 craft_state.propagate(now, parent_body_mu).unwrap().r
             };
-            world.remove_one::<State>(craft).ok();
             commit_station(world, craft, now);
             world.insert(craft, (Landed { offset },)).unwrap();
             effects.push(SimEffect::OrbitCleared { craft });

@@ -224,5 +224,3 @@ pub enum BurnPurpose {
     Landing,
     Launch,
 }
-
-// TODO: Some kind of MissionState?
