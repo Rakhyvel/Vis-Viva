@@ -12,7 +12,6 @@ use sdl2::keyboard::Scancode;
 
 use crate::{
     astro::{epoch::EphemerisTime, state::State, units::SUN_MU},
-    components::craft::{redraw_orbit, replace_line_path},
     container,
     generation::{lexicon::Lexicon, polygon},
     hud::{
@@ -27,7 +26,7 @@ use crate::{
     },
     render::{
         camera::{focus_point, CameraRig},
-        orbit_lines::style_orbit_lines,
+        orbit_lines::{redraw_orbit, replace_line_path, style_orbit_lines},
         picking::Picker,
         scene::{attach_craft_model, SceneRenderer},
     },
@@ -297,9 +296,6 @@ impl Scene for Gameplay {
         // Update GUI stuff
         self.controls_enabled.set(self.sim.clock().paused());
 
-        let focus = focus_point(self.sim.world(), self.selection.selected_entity());
-        self.rig.update(focus, self.selection.changed_at, app);
-
         if !modal_open {
             self.handle_tab(app);
             self.rig
@@ -312,6 +308,10 @@ impl Scene for Gameplay {
                 self.selection.set_selected(clicked, app.seconds as f64);
             }
         }
+
+        let focus = focus_point(self.sim.world(), self.selection.selected_entity());
+        self.rig.update(focus, self.selection.changed_at, app);
+
         let selected = self.selection.selected_entity();
         self.picker
             .sync_selected_tile(self.sim.world(), selected, &app.renderer);

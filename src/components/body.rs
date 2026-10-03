@@ -12,7 +12,7 @@ use nalgebra_glm::{vec3, DVec3};
 
 use crate::{
     astro::state::State,
-    components::craft::AssociatedEntity,
+    render::orbit_lines::AssociatedEntity,
     sim::{
         bodies::{Body, Category, TileMap, TileSets},
         hierarchy::{Named, ParentBody},
