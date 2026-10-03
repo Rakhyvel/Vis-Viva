@@ -112,7 +112,7 @@ impl EventQueue {
     }
 
     /// Get the time of the next most recent event, if there is any
-    pub fn peek_next(&self) -> Option<EphemerisTime> {
+    pub fn next_time(&self) -> Option<EphemerisTime> {
         self.events.keys().next().copied()
     }
 

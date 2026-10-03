@@ -129,7 +129,7 @@ impl Sim {
     fn recompute_run_until(&mut self) {
         let now = self.clock.now();
         events::schedule_events(&mut self.world, &mut self.events);
-        let next_event = self.events.peek_next();
+        let next_event = self.events.next_time();
         let next_limit = self.next_station_limit(now);
         let next_job_complete = self.next_job_completion(now);
 
