@@ -9,7 +9,7 @@ use apricot::{
 use hecs::{Entity, World};
 use nalgebra_glm::{vec2, vec3, vec4, DVec3, Vec2};
 
-use crate::sim::{bodies::SurfaceTile, hierarchy::Parent};
+use crate::sim::{bodies::SurfaceTile, hierarchy::ParentBody};
 
 pub struct CameraRig {
     /// The camera used for rendering 3d models
@@ -162,7 +162,7 @@ pub fn focus_point(world: &World, selected: Option<Entity>) -> Option<DVec3> {
     // Buildings keep the camera centered on their planet, not on themselves
     let focus = if world.get::<&SurfaceTile>(selected_entity).is_ok() {
         world
-            .get::<&Parent>(selected_entity)
+            .get::<&ParentBody>(selected_entity)
             .map(|p| p.id)
             .unwrap_or(selected_entity)
     } else {

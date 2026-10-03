@@ -9,7 +9,7 @@ use nalgebra_glm::{vec3, DVec3};
 use crate::{
     astro::state::State,
     components::body::SceneObject,
-    sim::{bodies::Body, hierarchy::Parent, propulsion::Craft},
+    sim::{bodies::Body, hierarchy::ParentBody, propulsion::Craft},
 };
 
 pub struct AssociatedEntity {
@@ -20,7 +20,12 @@ pub fn replace_line_path(
     world: &mut World,
     renderer: &RenderContext,
     craft_entity: Entity,
-    new_line_path: Option<(WorldPosition, Parent, LinePathComponent, AssociatedEntity)>,
+    new_line_path: Option<(
+        WorldPosition,
+        ParentBody,
+        LinePathComponent,
+        AssociatedEntity,
+    )>,
 ) {
     let old_line_path = world.get::<&Craft>(craft_entity).unwrap().line_path_entity;
 
@@ -46,7 +51,7 @@ pub fn redraw_orbit(
     soi_radius: Option<f64>,
 ) {
     let state = *world.get::<&State>(craft).unwrap();
-    let parent = world.get::<&Parent>(craft).unwrap().id;
+    let parent = world.get::<&ParentBody>(craft).unwrap().id;
     let parent_pos = world.get::<&WorldPosition>(parent).unwrap().pos;
     let parent_mu = world.get::<&Body>(parent).unwrap().mu;
 
@@ -63,7 +68,7 @@ pub fn redraw_orbit(
         craft,
         Some((
             WorldPosition { pos: parent_pos },
-            Parent { id: parent },
+            ParentBody { id: parent },
             LinePathComponent::new(vertices),
             AssociatedEntity { associate: craft },
         )),

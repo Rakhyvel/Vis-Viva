@@ -9,7 +9,7 @@ use crate::{
     components::craft::AssociatedEntity,
     sim::{
         bodies::Body,
-        hierarchy::{get_ancestor, Parent},
+        hierarchy::{get_ancestor, ParentBody},
     },
     ui::style::STYLE,
 };
@@ -62,7 +62,7 @@ pub fn style_orbit_lines(
     }
 
     let mut mu_map = HashMap::new();
-    for (entity, (_line, parent)) in world.query::<(&LinePathComponent, &Parent)>().iter() {
+    for (entity, (_line, parent)) in world.query::<(&LinePathComponent, &ParentBody)>().iter() {
         let parent_entity = parent.id;
         let parent_body_mu = world.get::<&Body>(parent_entity).unwrap().mu;
 
@@ -92,7 +92,7 @@ pub fn style_orbit_lines(
     }
 
     let mut proximity_alphas = HashMap::new();
-    for (entity, (_line, _parent)) in world.query::<(&LinePathComponent, &Parent)>().iter() {
+    for (entity, (_line, _parent)) in world.query::<(&LinePathComponent, &ParentBody)>().iter() {
         let assoc_entity = *assoc_entity_map.get(&entity).unwrap();
         let assoc_planet = get_ancestor(world, assoc_entity).unwrap_or(sun);
 
@@ -114,7 +114,7 @@ pub fn style_orbit_lines(
 
     // Set the origins of the line paths wrt the parent world positions
     for (entity, (line, world_pos, parent)) in
-        world.query_mut::<(&mut LinePathComponent, &mut WorldPosition, &Parent)>()
+        world.query_mut::<(&mut LinePathComponent, &mut WorldPosition, &ParentBody)>()
     {
         let parent_pos = pos_map.get(&parent.id).unwrap();
 

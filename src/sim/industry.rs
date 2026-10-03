@@ -7,7 +7,7 @@ use crate::{
     astro::epoch::EphemerisTime,
     sim::{
         docking::{free_ports, next_free_port, Docking, PortHost},
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         parts::{ModuleSpec, PartCost, PartDef, PartInventory, PartRegistry},
         propulsion::spawn_craft,
         resources::{
@@ -229,7 +229,7 @@ pub fn commit_pending_builds(world: &World, parts: &PartRegistry, now: Ephemeris
         .collect();
 
     for (fab, part_id) in pending {
-        let station = world.get::<&Parent>(fab).unwrap().id;
+        let station = world.get::<&Docking>(fab).unwrap().host;
         let cost = &parts.get(part_id).unwrap().cost;
 
         // Commit the parts subtraction
@@ -279,7 +279,7 @@ pub fn complete_due_jobs(
     for (fab, part_id) in done {
         effects.push(SimEffect::Focus { entity: fab });
 
-        let parent = world.get::<&Parent>(fab).unwrap().id;
+        let parent = world.get::<&Docking>(fab).unwrap().host;
         let def = parts.get(part_id).unwrap().clone();
 
         commit_station(world, parent, now);
@@ -314,7 +314,7 @@ fn deliver_craft(
     now: EphemerisTime,
     effects: &mut Vec<SimEffect>,
 ) {
-    let parent = *world.get::<&Parent>(station).unwrap();
+    let parent = *world.get::<&ParentBody>(station).unwrap();
 
     let craft = spawn_craft(
         def.instantiate_craft(),
@@ -342,7 +342,6 @@ fn deliver_craft(
             host_port: port as u32,
             own_port: 0 as u32, // TODO: This will work for modules now, but maybe break if modules get multiple docking ports
         };
-        let parent = Parent { id: craft };
         match *spec {
             ModuleSpec::Store {
                 resource,
@@ -356,7 +355,6 @@ fn deliver_craft(
                     capacity,
                     amount_et: now,
                 },
-                parent,
             )),
             ModuleSpec::Miner {
                 power_watts,
@@ -368,7 +366,6 @@ fn deliver_craft(
                     kg_per_s,
                     power_watts,
                 },
-                parent,
             )),
         };
     }

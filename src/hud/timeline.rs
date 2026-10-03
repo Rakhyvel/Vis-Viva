@@ -13,7 +13,7 @@ use crate::{
     sim::{
         docking::{Docking, PortHost},
         events::Event,
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         industry::{projected_completion, Factory},
         mission::BurnPurpose,
         propulsion::Craft,
@@ -209,7 +209,7 @@ fn craft_name_from_event(sim: &Sim, event: &Event) -> (String, String) {
         }
 
         Event::FactoryComplete { craft, part_id } => {
-            let parent = sim.world().get::<&Parent>(*craft).unwrap().id;
+            let parent = sim.world().get::<&ParentBody>(*craft).unwrap().id;
             let named = sim.world().get::<&Named>(parent).unwrap();
             let part_def = sim.parts().get(*part_id).map_or("???", |p| p.name.as_str());
             (named.name.clone(), part_def.to_string())

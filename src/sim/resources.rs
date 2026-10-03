@@ -10,7 +10,7 @@ use crate::{
     sim::{
         bodies::Body,
         docking::Docking,
-        hierarchy::{Landed, Parent},
+        hierarchy::{Landed, ParentBody},
         industry::{pending_deduction, Factory},
         life_support::{Station, O2_PER_CREW_DAY, WATER_PER_CREW_DAY},
         parts::PartRegistry,
@@ -339,7 +339,7 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
         return 0.0;
     }
 
-    let Ok(parent) = world.get::<&Parent>(host) else {
+    let Ok(parent) = world.get::<&ParentBody>(host) else {
         return 0.0;
     };
     let Ok(body) = world.get::<&Body>(parent.id) else {

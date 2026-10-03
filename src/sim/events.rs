@@ -7,7 +7,7 @@ use crate::{
     sim::{
         bodies::Body,
         docking::{allocate_ports, Docking, PortHost},
-        hierarchy::{set_orbit, Landed, Parent},
+        hierarchy::{set_orbit, Landed, ParentBody},
         mission::{BurnPurpose, Command},
         propulsion::{apply_burn, Craft},
         resources::commit_station,
@@ -152,7 +152,7 @@ pub fn apply(world: &mut World, now: EphemerisTime, event: Event, effects: &mut 
             ..
         } => {
             apply_burn(world, craft, dv, now);
-            let parent = world.get::<&Parent>(craft).unwrap().id;
+            let parent = world.get::<&ParentBody>(craft).unwrap().id;
             set_orbit(world, craft, new_orbit, parent);
             effects.push(SimEffect::OrbitChanged { craft, soi_radius });
             effects.push(SimEffect::Focus { entity: craft });
@@ -165,7 +165,7 @@ pub fn apply(world: &mut World, now: EphemerisTime, event: Event, effects: &mut 
         Event::Land { craft } => {
             let offset = {
                 let craft_state = world.get::<&State>(craft).unwrap();
-                let parent_id = world.get::<&Parent>(craft).unwrap().id;
+                let parent_id = world.get::<&ParentBody>(craft).unwrap().id;
                 let parent_body_mu = world.get::<&Body>(parent_id).unwrap().mu;
                 craft_state.propagate(now, parent_body_mu).unwrap().r
             };

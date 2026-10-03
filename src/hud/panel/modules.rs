@@ -14,7 +14,7 @@ use crate::{
     },
     sim::{
         docking::{dock_tree, free_ports, Docking, PortHost},
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         industry::Factory,
         propulsion::Craft,
         resources::{
@@ -156,7 +156,7 @@ fn solar_panel_section(ctx: &PanelCtx, module: Entity) -> Section {
         let text = text.clone();
         let last = Cell::new(f32::NAN);
         move |world: &World, _now: EphemerisTime| {
-            let station = world.get::<&Parent>(module).unwrap().id;
+            let station = world.get::<&Docking>(module).unwrap().host;
             let r_au = station_r_au(world, station);
             let Ok(panel) = world.get::<&SolarPanel>(module) else {
                 return;
@@ -216,7 +216,7 @@ fn resource_store_section(ctx: &PanelCtx, module: Entity) -> Section {
         let last_m = Cell::new(f32::NAN);
         let last_mdot = Cell::new(f32::NAN);
         move |world: &World, now: EphemerisTime| {
-            let station = world.get::<&Parent>(module).unwrap().id;
+            let station = world.get::<&Docking>(module).unwrap().host;
             let Ok(t) = world.get::<&ResourceStore>(module) else {
                 return;
             };

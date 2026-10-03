@@ -21,7 +21,7 @@ use crate::{
     sim::{
         bodies::Body,
         docking::allocate_ports,
-        hierarchy::{Landed, Named, Parent},
+        hierarchy::{Landed, Named, ParentBody},
         mission::Command,
         propulsion::{craft_dv, Craft},
     },
@@ -304,7 +304,7 @@ impl ManeuverModal {
         let Ok(target_state) = world.get::<&State>(target) else {
             return;
         };
-        let Ok(parent) = world.get::<&Parent>(craft) else {
+        let Ok(parent) = world.get::<&ParentBody>(craft) else {
             return;
         };
         let Ok(parent_body) = world.get::<&Body>(parent.id) else {
@@ -469,14 +469,14 @@ impl ManeuverModal {
 
         let craft = self.craft.unwrap();
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("should have a parent")
             .id;
         let opts = ManeuverOptions {
             is_landed: world.get::<&Landed>(craft).is_ok(),
             is_orbiting: world.get::<&State>(craft).is_ok(),
             parent_is_solid: !world.get::<&Body>(parent).unwrap().gaseous(),
-            can_escape: world.get::<&Parent>(parent).is_ok(),
+            can_escape: world.get::<&ParentBody>(parent).is_ok(),
             bodies: Self::get_body_destinations(craft, world),
             crafts: Self::get_craft_destinations(craft, world),
             co_located: self.get_craft_colocated(craft, current_et, world),
@@ -669,10 +669,10 @@ impl ManeuverModal {
 
     fn get_body_destinations(craft: Entity, world: &World) -> Vec<(Entity, String)> {
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("craft should have parent")
             .id;
-        let mut binding = world.query::<(&State, &Body, &Named, &Parent)>();
+        let mut binding = world.query::<(&State, &Body, &Named, &ParentBody)>();
         binding
             .iter()
             .filter(|(_, (_, _, _, p))| p.id == parent)
@@ -682,11 +682,11 @@ impl ManeuverModal {
 
     fn get_craft_destinations(craft: Entity, world: &World) -> Vec<(Entity, String)> {
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("craft should have parent")
             .id;
         // this already excludes landed craft, since they don't have State
-        let mut binding = world.query::<(&State, &Craft, &Named, &Parent)>();
+        let mut binding = world.query::<(&State, &Craft, &Named, &ParentBody)>();
         binding
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
@@ -705,7 +705,7 @@ impl ManeuverModal {
         const DOCKING_SPEED: f64 = 1.0 / METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR;
 
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("craft should have parent")
             .id;
         let mu = world.get::<&Body>(parent).expect("parent must be body").mu;
@@ -719,7 +719,7 @@ impl ManeuverModal {
         };
 
         // this already excludes landed craft, since they don't have State
-        let mut binding = world.query::<(&State, &Craft, &Named, &Parent)>();
+        let mut binding = world.query::<(&State, &Craft, &Named, &ParentBody)>();
         binding
             .iter()
             .filter(|(e, (_, _, _, p))| p.id == parent && craft != *e)
@@ -740,7 +740,7 @@ impl ManeuverModal {
 
         let init_state = world.get::<&State>(craft).ok()?;
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("craft must have parent")
             .id;
         let parent_body = world.get::<&Body>(parent).expect("parent must be body");
@@ -808,7 +808,7 @@ impl ManeuverModal {
         // Can be Err if craft is landed (no state!)
         let init_state = world.get::<&State>(craft);
         let parent = world
-            .get::<&Parent>(craft)
+            .get::<&ParentBody>(craft)
             .expect("craft must have parent")
             .id;
         let parent_body = world.get::<&Body>(parent).expect("parent must be body");
@@ -894,7 +894,7 @@ impl ManeuverModal {
             }
             ManeuverKind::Escape => {
                 let parent_state = world.get::<&State>(parent).unwrap();
-                let grandparent = world.get::<&Parent>(parent).ok()?; // Could be None if orbiting the Sun
+                let grandparent = world.get::<&ParentBody>(parent).ok()?; // Could be None if orbiting the Sun
                 let grandparent_body = world.get::<&Body>(grandparent.id).unwrap();
 
                 let plan = plan_escape(
@@ -924,7 +924,7 @@ impl ManeuverModal {
             ManeuverKind::Launch => {
                 let landed = world.get::<&Landed>(craft).ok()?;
                 let parent_state = world.get::<&State>(parent).unwrap();
-                let grandparent = world.get::<&Parent>(parent).unwrap();
+                let grandparent = world.get::<&ParentBody>(parent).unwrap();
                 let grandparent_body = world.get::<&Body>(grandparent.id).unwrap();
 
                 let plan = plan_launch(

@@ -7,7 +7,7 @@ use crate::{
     },
     sim::{
         bodies::Body,
-        hierarchy::{set_orbit, Parent},
+        hierarchy::{set_orbit, ParentBody},
         industry::Factory,
         propulsion::Craft,
     },
@@ -98,7 +98,7 @@ pub fn undock(world: &mut World, craft: Entity, now: EphemerisTime) -> bool {
     let Ok(host) = world.get::<&Docking>(craft).map(|d| d.host) else {
         return false;
     };
-    let parent = world.get::<&Parent>(craft).unwrap().id;
+    let parent = world.get::<&ParentBody>(craft).unwrap().id;
     let parent_mu = world.get::<&Body>(parent).unwrap().mu;
 
     let Ok(host_state) = world.get::<&State>(host).map(|s| *s) else {

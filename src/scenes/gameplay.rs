@@ -34,7 +34,7 @@ use crate::{
     sim::{
         bodies::{Body, Category, TileSets},
         docking::{Docking, PortHost},
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         industry::Factory,
         life_support::Station,
         parts::{id_hash, PartInventory, PartRegistry},
@@ -567,7 +567,7 @@ impl Gameplay {
                 system.planet.1,
                 SceneObject { bvh_node_id: None },
                 Named { name },
-                Some(Parent { id: sun_entity }),
+                Some(ParentBody { id: sun_entity }),
                 &tile_sets,
                 &mut world,
                 &app.renderer,
@@ -587,7 +587,7 @@ impl Gameplay {
                     moon.1,
                     SceneObject { bvh_node_id: None },
                     Named { name },
-                    Some(Parent { id: planet_entity }),
+                    Some(ParentBody { id: planet_entity }),
                     &tile_sets,
                     &mut world,
                     &app.renderer,
@@ -612,7 +612,7 @@ impl Gameplay {
             Named {
                 name: String::from("Station"),
             },
-            Parent { id: station_parent },
+            ParentBody { id: station_parent },
             &mut world,
         );
         attach_craft_model(&mut world, &app.renderer, &mut bvh, station);
@@ -660,7 +660,6 @@ impl Gameplay {
                 capacity: 1.8e9,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -669,7 +668,6 @@ impl Gameplay {
                 host_port: 1,
             },
             SolarPanel { rated_w: 100_000.0 },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -683,7 +681,6 @@ impl Gameplay {
                 capacity: 3800.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -697,7 +694,6 @@ impl Gameplay {
                 capacity: 600.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -711,7 +707,6 @@ impl Gameplay {
                 capacity: 100.0,
                 amount_et: EphemerisTime::epoch(),
             },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -726,7 +721,6 @@ impl Gameplay {
                 enabled: false,
                 reserved_port: None,
             },
-            Parent { id: station_parent },
         ));
         world.spawn((
             Docking {
@@ -739,7 +733,6 @@ impl Gameplay {
                 power_watts: 5_000.0,
                 joules_per_kg_water: 2.52e7,
             },
-            Parent { id: station_parent },
         ));
         crafts.push(station);
 

@@ -13,7 +13,7 @@ use crate::{
     render::{camera::CameraRig, scene::is_occluded},
     sim::{
         bodies::{Body, SurfaceTile, TileMap},
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         propulsion::Craft,
     },
 };
@@ -191,7 +191,7 @@ impl Picker {
         let body_entity = if world.get::<&Body>(selected).is_ok() {
             selected
         } else {
-            world.get::<&Parent>(selected).ok()?.id
+            world.get::<&ParentBody>(selected).ok()?.id
         };
 
         let mut q = world
@@ -235,8 +235,10 @@ impl Picker {
     ) -> Option<(Entity, usize)> {
         let sel = selected?;
 
-        if let (Ok(tile), Ok(parent)) = (world.get::<&SurfaceTile>(sel), world.get::<&Parent>(sel))
-        {
+        if let (Ok(tile), Ok(parent)) = (
+            world.get::<&SurfaceTile>(sel),
+            world.get::<&ParentBody>(sel),
+        ) {
             return Some((parent.id, tile.index as usize));
         }
 

@@ -12,7 +12,7 @@ use crate::{
     },
     sim::{
         bodies::Body,
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         parts::PartInventory,
         propulsion::Craft,
     },
@@ -35,11 +35,11 @@ pub fn body_selection(ctx: &PanelCtx, selected: Entity) -> Section {
 
     let mut widgets: Vec<Box<dyn Widget<CommandMessages>>> = vec![];
 
-    if let Ok(parent) = ctx.world.get::<&Parent>(selected) {
+    if let Ok(parent) = ctx.world.get::<&ParentBody>(selected) {
         let state = ctx.world.get::<&State>(selected).unwrap();
         let parent_body = ctx.world.get::<&Body>(parent.id).unwrap();
 
-        let orbits_star = ctx.world.get::<&Parent>(parent.id).is_err();
+        let orbits_star = ctx.world.get::<&ParentBody>(parent.id).is_err();
         let dist = |er: f64| {
             if orbits_star {
                 format!("{:.2} AU", er / EARTH_RADII_PER_AU)
@@ -101,14 +101,14 @@ pub fn body_selection(ctx: &PanelCtx, selected: Entity) -> Section {
 
     let children: Vec<Entity> = ctx
         .world
-        .query::<(&Parent, &Body)>()
+        .query::<(&ParentBody, &Body)>()
         .iter()
         .filter(|(_, (p, _))| p.id == selected)
         .map(|(e, _)| e)
         .collect(); // TODO: We don't have to collect just to check for is_emtpy, do we?
 
     if !children.is_empty() {
-        let has_parent = ctx.world.get::<&Parent>(selected).is_ok();
+        let has_parent = ctx.world.get::<&ParentBody>(selected).is_ok();
         out.push(HRule::new(STYLE.border, 1.0, WIDTH));
         out.push(
             Label::new(if has_parent { "MOONS" } else { "PLANETS" }).font(font_small_bold, ctx.app),
@@ -125,7 +125,7 @@ pub fn body_selection(ctx: &PanelCtx, selected: Entity) -> Section {
 
     let craft: Vec<Entity> = ctx
         .world
-        .query::<(&Parent, &Craft)>()
+        .query::<(&ParentBody, &Craft)>()
         .iter()
         .filter(|(_, (p, _))| p.id == selected)
         .map(|(e, _)| e)

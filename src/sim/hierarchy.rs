@@ -12,7 +12,7 @@ use crate::{
 
 /// Component relating an entity to a parent body
 #[derive(Debug, Clone, Copy)]
-pub struct Parent {
+pub struct ParentBody {
     pub id: Entity,
 }
 
@@ -31,13 +31,13 @@ pub fn orbit_system(world: &mut World, now: EphemerisTime) {
     // Build parent -> children map
     let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
 
-    for (entity, (parent, _)) in world.query::<(&Parent, &State)>().iter() {
+    for (entity, (parent, _)) in world.query::<(&ParentBody, &State)>().iter() {
         children.entry(parent.id).or_default().push(entity);
     }
 
     // Collect all entities with WorldPosition
     let mut has_parent = HashMap::new();
-    for (entity, parent) in world.query::<&Parent>().iter() {
+    for (entity, parent) in world.query::<&ParentBody>().iter() {
         has_parent.insert(entity, parent.id);
     }
 
@@ -97,7 +97,7 @@ pub fn landed_system(world: &mut World) {
     }
 
     for (_entity, (world_pos, parent, landed)) in
-        world.query_mut::<(&mut WorldPosition, &Parent, &Landed)>()
+        world.query_mut::<(&mut WorldPosition, &ParentBody, &Landed)>()
     {
         let parent_pos = pos_map.get(&parent.id).unwrap();
         world_pos.pos = parent_pos + landed.offset;
@@ -121,7 +121,7 @@ pub fn docked_position_system(world: &mut World) {
 pub fn get_ancestor(world: &World, entity: Entity) -> Option<Entity> {
     let mut child = entity;
     loop {
-        let parent = world.get::<&Parent>(child).ok()?; // if sun, this will return None (sun has no parent)
+        let parent = world.get::<&ParentBody>(child).ok()?; // if sun, this will return None (sun has no parent)
         let parent_body = world.get::<&Body>(parent.id).ok()?;
         if parent_body.mu == SUN_MU {
             return Some(child);
@@ -140,7 +140,7 @@ pub fn ancestor_chain(world: &World, mut selected: Entity) -> Vec<Entity> {
     }
 
     // finish eating, and come back again!
-    while let Ok(parent) = world.get::<&Parent>(selected) {
+    while let Ok(parent) = world.get::<&ParentBody>(selected) {
         ancestors.push(parent.id);
         selected = parent.id;
     }
@@ -152,6 +152,6 @@ pub fn ancestor_chain(world: &World, mut selected: Entity) -> Vec<Entity> {
 pub fn set_orbit(world: &mut World, craft: Entity, new_craft_orbit: State, new_parent: Entity) {
     world.remove_one::<State>(craft).ok();
     world
-        .insert(craft, (new_craft_orbit, Parent { id: new_parent }))
+        .insert(craft, (new_craft_orbit, ParentBody { id: new_parent }))
         .unwrap();
 }

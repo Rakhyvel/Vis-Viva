@@ -15,7 +15,7 @@ use crate::{
     components::craft::AssociatedEntity,
     sim::{
         bodies::{Body, Category, TileMap, TileSets},
-        hierarchy::{Named, Parent},
+        hierarchy::{Named, ParentBody},
         parts::PartInventory,
     },
 };
@@ -29,7 +29,7 @@ pub fn spawn_body(
     init_state: State,
     mut scene_obj: SceneObject,
     named: Named,
-    parent: Option<Parent>,
+    parent: Option<ParentBody>,
     tile_sets: &TileSets,
     world: &mut World,
     renderer: &RenderContext,
