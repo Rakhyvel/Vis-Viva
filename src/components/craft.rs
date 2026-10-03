@@ -16,44 +16,6 @@ pub struct AssociatedEntity {
     pub associate: Entity,
 }
 
-/// Give a sim-spawned craft its model and BVH node
-pub fn attach_craft_model(
-    world: &mut World,
-    renderer: &RenderContext,
-    bvh: &mut BVH<Entity>,
-    craft: Entity,
-) {
-    let craft_mesh = renderer.get_mesh_id_from_name("cone").unwrap();
-    let texture_id = renderer.get_texture_id_from_name("europa").unwrap();
-    let scale_vec: DVec3 = vec3(0.01, 0.01, 0.01);
-    let position: DVec3 = vec3(0., 0., 0.);
-
-    let bvh_node_id = bvh.insert(
-        craft,
-        renderer
-            .get_mesh_aabb(craft_mesh)
-            .scale(nalgebra_glm::convert(scale_vec))
-            .translate(nalgebra_glm::convert(position)),
-    );
-
-    world
-        .insert(
-            craft,
-            (
-                ModelComponent::new(
-                    craft_mesh,
-                    texture_id,
-                    nalgebra_glm::convert(position),
-                    nalgebra_glm::convert(scale_vec),
-                ),
-                SceneObject {
-                    bvh_node_id: Some(bvh_node_id),
-                },
-            ),
-        )
-        .unwrap();
-}
-
 pub fn replace_line_path(
     world: &mut World,
     renderer: &RenderContext,

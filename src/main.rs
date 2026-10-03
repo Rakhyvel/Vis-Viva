@@ -2,6 +2,7 @@ mod astro;
 mod components;
 mod generation;
 mod hud;
+mod render;
 mod scenes;
 mod sim;
 mod ui;
