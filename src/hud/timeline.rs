@@ -96,7 +96,6 @@ pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
     // Add hard events from the event queue
     let mut marks: Vec<TimelineMark> = sim
         .events()
-        .events
         .iter()
         .flat_map(|(et, events)| {
             let t = *et;

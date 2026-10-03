@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{btree_map, BTreeMap};
 
 use hecs::{Entity, World};
 
@@ -78,8 +78,7 @@ pub enum Event {
 }
 
 pub struct EventQueue {
-    // TODO: Don't make this public. Have methods for peek_next, iter
-    pub events: BTreeMap<EphemerisTime, Vec<Event>>,
+    events: BTreeMap<EphemerisTime, Vec<Event>>,
     version: u64,
 }
 
@@ -110,6 +109,16 @@ impl EventQueue {
             .into_values()
             .flatten()
             .collect()
+    }
+
+    /// Get the time of the next most recent event, if there is any
+    pub fn peek_next(&self) -> Option<EphemerisTime> {
+        self.events.keys().next().copied()
+    }
+
+    /// Get the event iterator for these events
+    pub fn iter(&self) -> btree_map::Iter<'_, EphemerisTime, Vec<Event>> {
+        self.events.iter()
     }
 }
 
