@@ -24,36 +24,33 @@ pub struct Cell {
 }
 
 impl Porkchop {
-    pub fn compute<F>(
-        current_et: EphemerisTime,
-        sweep: f64,
-        tof_min: f64,
-        tof_max: f64,
-        depart_steps: usize,
-        tof_steps: usize,
-        eval: F,
-    ) -> Self
+    pub fn compute<F>(w: &SweepWindow, depart_steps: usize, tof_steps: usize, eval: F) -> Self
     where
         F: Fn(EphemerisTime, f64) -> Option<Cell> + Sync,
     {
-        let step = EphemerisTime::from_years(sweep / depart_steps as f64);
+        assert!(
+            depart_steps >= 1 && tof_steps >= 2,
+            "porkchop needs at least 1 col and 2 rows"
+        );
+
+        let step = EphemerisTime::from_years(w.sweep / depart_steps as f64);
 
         let cells: Vec<Option<Cell>> = (0..tof_steps)
             .flat_map(|j| (0..depart_steps).map(move |i| (i, j)))
             .collect::<Vec<_>>() // TODO: A range here might be simpler
             .into_par_iter()
             .map(|(i, j)| {
-                let tof = Self::tof_for_row(tof_min, tof_max, tof_steps, j);
-                eval(current_et + step * i as i64, tof)
+                let tof = Self::tof_for_row(w.tof_min, w.tof_max, tof_steps, j);
+                eval(w.start + step * i as i64, tof)
             })
             .collect();
 
         Self {
-            current_et,
+            current_et: w.start,
             step,
             depart_steps,
-            tof_min,
-            tof_max,
+            tof_min: w.tof_min,
+            tof_max: w.tof_max,
             tof_steps,
             cells,
         }
@@ -95,7 +92,7 @@ pub enum TransferObjective {
     /// minimize total delta-v
     MinFuel,
     /// minimize tof, subject to a max delta-v budget
-    MinTime { max_dv: f64 },
+    MinTof { max_dv: f64 }, // TODO: should probably be SoonestArrivalTime
     /// weighed combination, alpha * dv + (1 - alpha) * tof
     Balanced { dv_weight: f64, tof_weight: f64 },
 }
@@ -105,7 +102,7 @@ impl TransferObjective {
     pub fn cost(&self, dv: f64, tof: f64) -> Option<f64> {
         match self {
             TransferObjective::MinFuel => Some(dv),
-            TransferObjective::MinTime { max_dv } => {
+            TransferObjective::MinTof { max_dv } => {
                 if dv <= *max_dv {
                     Some(tof)
                 } else {
@@ -152,7 +149,7 @@ pub fn sweep_window(
         start: current_et,
         sweep: synodic.min(craft_period * 20.0),
         full: synodic,
-        tof_min: tof_guess / 10.0,
+        tof_min: tof_guess / 1.3,
         tof_max: tof_guess * 1.3,
     })
 }
@@ -165,4 +162,136 @@ where
         .into_iter()
         .filter_map(f)
         .min_by(|a, b| a.total.total_cmp(&b.total))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn window() -> SweepWindow {
+        SweepWindow {
+            start: EphemerisTime::epoch(),
+            sweep: 2.0,
+            full: 2.0,
+            tof_min: 1.0,
+            tof_max: 3.0,
+        }
+    }
+
+    #[test]
+    fn grid_spawns_the_window() {
+        let w = window();
+        let chop = Porkchop::compute(&w, 4, 3, |_, _| None);
+
+        assert_eq!(chop.depart_at(0), w.start);
+        assert_eq!(
+            chop.depart_at(4),
+            w.start + EphemerisTime::from_years(w.sweep)
+        );
+
+        // row 0 is the longest tof
+        assert_eq!(chop.tof_at(0), w.tof_max);
+        assert_eq!(chop.tof_at(2), w.tof_min);
+    }
+
+    #[test]
+    fn each_cell_is_evaluated_at_its_own_departure_and_flight_time() {
+        let w = window();
+        // store the inputs, so we can check every cell got its own
+        let chop = Porkchop::compute(&w, 4, 3, |et, tof| {
+            Some(Cell {
+                depart_dv: DVec3::zeros(),
+                arrival_dv: tof,
+                total: (et - w.start).as_years(),
+            })
+        });
+        for i in 0..4 {
+            for j in 0..3 {
+                let cell = chop.at(i, j).unwrap();
+                assert_eq!(cell.total, (chop.depart_at(i) - w.start).as_years());
+                assert_eq!(cell.arrival_dv, chop.tof_at(j));
+            }
+        }
+    }
+
+    #[test]
+    fn best_is_the_cheapest_solved_cell() {
+        let w = window();
+        // departures 0, 0.5, 1, 1.5, flights 3, 2, 1. Cheapest at depart 1, flight 2 (i = 2, j = 1)
+        let chop = Porkchop::compute(&w, 4, 3, |et, tof| {
+            let depart = (et - w.start).as_years();
+            // unsolvable cells must be skipped, not treated as free
+            (tof != 3.0).then(|| Cell {
+                depart_dv: DVec3::zeros(),
+                arrival_dv: 0.0,
+                total: (depart - 1.0).powi(2) + (tof - 2.0).powi(2),
+            })
+        });
+        let (i, j, _) = chop.best(&TransferObjective::MinFuel).unwrap();
+        assert_eq!((i, j), (2, 1));
+    }
+
+    #[test]
+    fn window_scales_with_the_orbits() {
+        let t0 = EphemerisTime::epoch();
+        let window = |k: f64, mu: f64| {
+            let craft = State::circular(1.0 * k, t0, mu);
+            let target = State::circular(1.5 * k, t0, mu);
+            sweep_window(&craft, &target, mu, t0).unwrap()
+        };
+        let base = window(1.0, 1.0);
+        // time should scale with mu
+        for (scaled, factor) in [(window(4.0, 1.0), 8.0), (window(1.0, 4.0), 0.5)] {
+            for (name, s, b) in [
+                ("tof_min", base.tof_min, scaled.tof_min),
+                ("tof_max", base.tof_max, scaled.tof_max),
+                ("sweep", base.sweep, scaled.sweep),
+            ] {
+                assert!(
+                    (b / s - factor).abs() < 1e-12,
+                    "{name}: {b} vs {factor} x {s}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn balanced_cost_rises_with_dv_and_flight_time() {
+        let objective = TransferObjective::Balanced {
+            dv_weight: 1.0,
+            tof_weight: 2.0,
+        };
+        let base = objective.cost(3.0, 4.0).unwrap();
+        assert!(
+            objective.cost(3.5, 4.0).unwrap() > base,
+            "more dv should cost more"
+        );
+        assert!(
+            objective.cost(3.0, 4.5).unwrap() > base,
+            "a longer flight should cost more"
+        );
+    }
+
+    #[test]
+    fn a_zero_weight_ignores_that_quantity() {
+        // tof preference chooses quicker over a cheaper one
+        let tof_only = TransferObjective::Balanced {
+            dv_weight: 0.0,
+            tof_weight: 1.0,
+        };
+        assert!(tof_only.cost(10.0, 2.0).unwrap() < tof_only.cost(1.0, 3.0).unwrap());
+        // dv preference chooses cheaper over quicker
+        let dv_only = TransferObjective::Balanced {
+            dv_weight: 1.0,
+            tof_weight: 0.0,
+        };
+        assert!(dv_only.cost(2.0, 10.0).unwrap() < dv_only.cost(3.0, 1.0).unwrap());
+    }
+
+    #[test]
+    fn min_tof_rejects_transfers_over_budget() {
+        let objective = TransferObjective::MinTof { max_dv: 5.0 };
+        assert_eq!(objective.cost(4.0, 2.0), Some(2.0));
+        assert_eq!(objective.cost(6.0, 1.0), None);
+    }
 }

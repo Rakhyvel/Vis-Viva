@@ -44,41 +44,33 @@ pub fn transfer_porkchop(
     );
     let target_peri = (target_body_radius * 1.2).min(soi_radius * 0.5);
 
-    let chop = Porkchop::compute(
-        w.start,
-        w.sweep,
-        w.tof_min,
-        w.tof_max,
-        depart_steps,
-        tof_steps,
-        |et, tof| {
-            let craft = craft_state.propagate(et, mu).ok()?;
-            let target = target_body_state
-                .propagate(et + EphemerisTime::from_years(tof), mu)
-                .ok()?;
+    let chop = Porkchop::compute(w, depart_steps, tof_steps, |et, tof| {
+        let craft = craft_state.propagate(et, mu).ok()?;
+        let target = target_body_state
+            .propagate(et + EphemerisTime::from_years(tof), mu)
+            .ok()?;
 
-            best_branch(|k| {
-                let (v1, v2, aim) = aim_for_periapsis(
-                    craft.r,
-                    target,
-                    tof,
-                    mu,
-                    target_mu,
-                    soi_radius,
-                    target_peri,
-                    theta,
-                    k,
-                )?;
-                let depart_dv = v1 - craft.v;
-                let arrival_dv = capture_at_periapsis_dv(aim - target.r, v2 - target.v, target_mu);
-                Some(Cell {
-                    total: depart_dv.norm() + arrival_dv,
-                    depart_dv,
-                    arrival_dv,
-                })
+        best_branch(|k| {
+            let (v1, v2, aim) = aim_for_periapsis(
+                craft.r,
+                target,
+                tof,
+                mu,
+                target_mu,
+                soi_radius,
+                target_peri,
+                theta,
+                k,
+            )?;
+            let depart_dv = v1 - craft.v;
+            let arrival_dv = capture_at_periapsis_dv(aim - target.r, v2 - target.v, target_mu);
+            Some(Cell {
+                total: depart_dv.norm() + arrival_dv,
+                depart_dv,
+                arrival_dv,
             })
-        },
-    );
+        })
+    });
 
     Ok(chop)
 }
@@ -154,41 +146,33 @@ pub fn flyby_porkchop(
     );
     let target_peri = (target_body_radius * 1.2).min(soi_radius * 0.5);
 
-    let chop = Porkchop::compute(
-        w.start,
-        w.sweep,
-        w.tof_min,
-        w.tof_max,
-        depart_steps,
-        tof_steps,
-        |et, tof| {
-            let craft = craft_state.propagate(et, mu).ok()?;
-            let target = target_body_state
-                .propagate(et + EphemerisTime::from_years(tof), mu)
-                .ok()?;
+    let chop = Porkchop::compute(w, depart_steps, tof_steps, |et, tof| {
+        let craft = craft_state.propagate(et, mu).ok()?;
+        let target = target_body_state
+            .propagate(et + EphemerisTime::from_years(tof), mu)
+            .ok()?;
 
-            best_branch(|k| {
-                let (v1, _, _) = aim_for_periapsis(
-                    craft.r,
-                    target,
-                    tof,
-                    mu,
-                    target_mu,
-                    soi_radius,
-                    target_peri,
-                    theta,
-                    k,
-                )?;
-                let depart_dv = v1 - craft.v;
-                let arrival_dv = 0.0;
-                Some(Cell {
-                    total: depart_dv.norm() + arrival_dv,
-                    depart_dv,
-                    arrival_dv,
-                })
+        best_branch(|k| {
+            let (v1, _, _) = aim_for_periapsis(
+                craft.r,
+                target,
+                tof,
+                mu,
+                target_mu,
+                soi_radius,
+                target_peri,
+                theta,
+                k,
+            )?;
+            let depart_dv = v1 - craft.v;
+            let arrival_dv = 0.0;
+            Some(Cell {
+                total: depart_dv.norm() + arrival_dv,
+                depart_dv,
+                arrival_dv,
             })
-        },
-    );
+        })
+    });
 
     Ok(chop)
 }

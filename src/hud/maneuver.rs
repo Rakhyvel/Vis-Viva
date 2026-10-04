@@ -6,12 +6,12 @@ use std::{
 
 use crate::{
     astro::{
-        departure::{sweep_window, SweepWindow, TransferObjective},
         epoch::EphemerisTime,
         escape::plan_escape,
         landing::plan_landing,
         launch::plan_launch,
         porkchop::Porkchop,
+        porkchop::{sweep_window, SweepWindow, TransferObjective},
         rendezvous::{plan_rendezvous_at, rendezvous_porkchop},
         state::State,
         transfer::{flyby_porkchop, plan_flyby_at, plan_transfer_at, transfer_porkchop},

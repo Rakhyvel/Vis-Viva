@@ -28,31 +28,23 @@ pub fn rendezvous_porkchop(
 ) -> Result<Porkchop, String> {
     let mu = G * parent_mass;
 
-    let chop = Porkchop::compute(
-        w.start,
-        w.sweep,
-        w.tof_min,
-        w.tof_max,
-        depart_steps,
-        tof_steps,
-        |et, tof| {
-            let craft = craft_state.propagate(et, mu).ok()?;
-            let target = target_state
-                .propagate(et + EphemerisTime::from_years(tof), mu)
-                .ok()?;
+    let chop = Porkchop::compute(w, depart_steps, tof_steps, |et, tof| {
+        let craft = craft_state.propagate(et, mu).ok()?;
+        let target = target_state
+            .propagate(et + EphemerisTime::from_years(tof), mu)
+            .ok()?;
 
-            best_branch(|k| {
-                let (v1, v2) = lambert(craft.r, target.r, tof, mu, k)?;
-                let depart_dv = v1 - craft.v;
-                let brake = (target.v - v2).norm();
-                Some(Cell {
-                    total: depart_dv.norm() + brake,
-                    depart_dv,
-                    arrival_dv: brake,
-                })
+        best_branch(|k| {
+            let (v1, v2) = lambert(craft.r, target.r, tof, mu, k)?;
+            let depart_dv = v1 - craft.v;
+            let brake = (target.v - v2).norm();
+            Some(Cell {
+                total: depart_dv.norm() + brake,
+                depart_dv,
+                arrival_dv: brake,
             })
-        },
-    );
+        })
+    });
 
     Ok(chop)
 }
@@ -81,4 +73,37 @@ pub fn plan_rendezvous_at(
         rendezvous_state: tgt,
         brake_dv: brake_dv * METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::astro::porkchop::{sweep_window, TransferObjective};
+
+    use super::*;
+
+    #[test]
+    fn porkchop_approaches_but_never_beats_hohmann() {
+        let (mu, r1, r2) = (1.0, 1.0, 1.5);
+        let t0 = EphemerisTime::epoch();
+        let craft = State::circular(r1, t0, mu);
+        let target = State::circular(r2, t0, mu);
+
+        let w = sweep_window(&craft, &target, mu, t0).unwrap();
+        let chop = rendezvous_porkchop(&craft, &target, &w, mu / G, 200, 50).unwrap();
+        let (_, _, best) = chop.best(&TransferObjective::MinFuel).unwrap();
+
+        let a = (r1 + r2) / 2.0;
+        let hohmann = ((mu * (2.0 / r1 - 1.0 / a)).sqrt() - (mu / r1).sqrt())
+            + ((mu / r2).sqrt() - (mu * (2.0 / r2 - 1.0 / a)).sqrt());
+        assert!(
+            best.total >= hohmann * (1.0 - 1e-9),
+            "beat Hohmann: {} < {hohmann}",
+            best.total
+        );
+        assert!(
+            best.total < hohmann * 1.02,
+            "best {} vs Hohmann {hohmann}",
+            best.total
+        );
+    }
 }
