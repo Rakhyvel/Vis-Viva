@@ -44,6 +44,7 @@ mod tests {
     const ABS_TOL: f64 = 1e-14;
     const REL_TOL: f64 = 1e-14;
 
+    #[track_caller]
     fn assert_close(actual: f64, expected: f64) {
         let abs_err = (actual - expected).abs();
         let rel_err = abs_err / expected.abs().max(f64::MIN_POSITIVE);

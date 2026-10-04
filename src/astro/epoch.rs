@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
 
@@ -167,6 +167,13 @@ impl Sub for EphemerisTime {
     }
 }
 
+impl Neg for EphemerisTime {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
 impl Mul<i64> for EphemerisTime {
     type Output = Self;
     fn mul(self, rhs: i64) -> Self {
@@ -305,6 +312,17 @@ mod tests {
         assert_eq!(c, a + b);
 
         assert!(b < a);
+    }
+
+    #[test]
+    fn negation() {
+        let a = EphemerisTime::from_secs(10.0);
+        let b = -a;
+        let c = -b;
+
+        assert!(b < a);
+        assert!(b < c);
+        assert!(a == c);
     }
 
     #[test]
