@@ -5,3 +5,4 @@ pub mod orbit_lines;
 pub mod picking;
 pub mod polygon;
 pub mod scene;
+pub mod starbox;

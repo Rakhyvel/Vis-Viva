@@ -1,18 +1,18 @@
 //! This module is responsible for defining the gameplay scene.
 
-use std::{cell::Cell, collections::HashMap, rc::Rc};
+use std::{cell::Cell, rc::Rc};
 
 use apricot::{
     app::{App, Scene},
     bvh::BVH,
 };
-use hecs::{Entity, World};
+use hecs::Entity;
 use sdl2::keyboard::Scancode;
 
 use crate::{
-    astro::{epoch::EphemerisTime, state::State, units::SUN_MU},
+    astro::state::State,
     container,
-    generation::lexicon::Lexicon,
+    generation::new_game::{new_game, NewGame},
     hud::{
         fabricator::{FabricatorAction, FabricatorUi},
         footer::{Footer, FooterView, TurnMessages},
@@ -26,31 +26,24 @@ use crate::{
     render::{
         assets::load_assets,
         camera::{focus_point, CameraRig},
-        orbit_lines::{redraw_orbit, replace_line_path, style_orbit_lines},
+        orbit_lines::{redraw_orbit, replace_line_path, spawn_body_orbit_line, style_orbit_lines},
         picking::Picker,
-        scene::{attach_craft_model, SceneRenderer},
+        scene::{attach_body_model, attach_craft_model, SceneRenderer},
     },
+    scenes::selection::SelectionState,
     sim::{
-        bodies::{Body, Category},
-        docking::{Docking, PortHost},
+        bodies::Body,
+        docking::PortHost,
         hierarchy::{Named, ParentBody},
-        industry::Factory,
-        life_support::Station,
-        parts::{id_hash, PartInventory, PartRegistry},
-        propulsion::spawn_craft,
-        resources::{Electrolyzer, Resource, ResourceStore, SolarPanel},
+        parts::PartRegistry,
         Sim, SimEffect,
     },
     ui::anchor::{Anchor, AnchorPoint},
 };
 
-use crate::{
-    components::body::{spawn_body, SceneObject},
-    generation::solar_system_gen::{self},
-    ui::{
-        container::Container,
-        widget::{recv_msgs, Widget},
-    },
+use crate::ui::{
+    container::Container,
+    widget::{recv_msgs, Widget},
 };
 
 /// Struct that contains info about the game state
@@ -77,111 +70,6 @@ pub struct Gameplay {
 
     /// Buttons in the side panel are only clickable while paused
     controls_enabled: Rc<Cell<bool>>,
-}
-
-#[derive(Debug)]
-enum SelectionKind {
-    Craft,
-    Body,
-    Building,
-}
-
-struct SelectionState {
-    pub crafts: Vec<Entity>,
-    pub bodies: Vec<Entity>,
-    pub buildings: Vec<Entity>,
-
-    pub selected: Option<usize>,
-    pub kind: SelectionKind,
-
-    // For swoosh animation
-    pub changed_at: f64,
-}
-
-impl SelectionState {
-    pub fn new(crafts: Vec<Entity>, bodies: Vec<Entity>, buildings: Vec<Entity>) -> Self {
-        Self {
-            crafts,
-            bodies,
-            buildings,
-            selected: None,
-            kind: SelectionKind::Body,
-            changed_at: 0.0,
-        }
-    }
-
-    pub fn selected_entity(&self) -> Option<Entity> {
-        self.selected.map(|s| self.curr_sel_track()[s])
-    }
-
-    pub fn set_selected(&mut self, entity: Entity, app_seconds: f64) {
-        if let Some(selected) = self.selected_entity() {
-            if selected == entity {
-                return;
-            }
-        }
-
-        let found = self
-            .crafts
-            .iter()
-            .position(|e| *e == entity)
-            .map(|x| (x, SelectionKind::Craft))
-            .or(self
-                .bodies
-                .iter()
-                .position(|e| *e == entity)
-                .map(|x| (x, SelectionKind::Body)))
-            .or(self
-                .buildings
-                .iter()
-                .position(|e| *e == entity)
-                .map(|x| (x, SelectionKind::Building)));
-
-        if let Some((idx, kind)) = found {
-            self.selected = Some(idx);
-            self.kind = kind;
-
-            self.changed_at = app_seconds;
-        }
-    }
-
-    pub fn prev(&mut self, app_seconds: f64) {
-        if let Some(selected) = self.selected {
-            let mut new_selection = selected;
-            if selected == 0 {
-                new_selection = self.curr_sel_track().len() - 1;
-            } else {
-                new_selection -= 1;
-            }
-            self.selected = Some(new_selection);
-        } else {
-            self.selected = Some(0);
-        }
-
-        self.changed_at = app_seconds;
-    }
-
-    pub fn next(&mut self, app_seconds: f64) {
-        if let Some(selected) = self.selected {
-            let mut new_selection = selected + 1;
-            if new_selection >= self.curr_sel_track().len() {
-                new_selection = 0;
-            }
-            self.selected = Some(new_selection);
-        } else {
-            self.selected = Some(0);
-        }
-
-        self.changed_at = app_seconds;
-    }
-
-    fn curr_sel_track(&self) -> &Vec<Entity> {
-        match self.kind {
-            SelectionKind::Body => &self.bodies,
-            SelectionKind::Craft => &self.crafts,
-            SelectionKind::Building => &self.buildings,
-        }
-    }
 }
 
 impl Scene for Gameplay {
@@ -349,224 +237,30 @@ impl Gameplay {
     /// Constructs a new Gameplay struct with everything setup
     pub fn new(app: &App) -> Self {
         let tile_sets = load_assets(&app.renderer);
-        let mut world = World::new();
-        let mut bvh = BVH::<Entity>::new();
-
-        let sun_entity = spawn_body(
-            Body {
-                category: Category::Star,
-                body_radius: 110.0,
-                rotation_period_hours: 0.0,
-                rotation: 0.0,
-                atmos_pressure: 1000000.0,
-                temperature: 5778.0,
-                core_mass_fraction: 0.0,
-                magnetic_field: true,
-                density: 1.0,
-                mu: SUN_MU,
-            },
-            State::circular(0.1, EphemerisTime::new(rand::random()), 1.0),
-            SceneObject { bvh_node_id: None },
-            Named {
-                name: String::from("The Sun"),
-            },
-            None,
-            &tile_sets,
-            &mut world,
-            &app.renderer,
-            &mut bvh,
-        );
-
-        let mut bodies = vec![sun_entity];
-        let mut crafts = vec![];
-        let buildings = vec![];
-
-        let (_lexicon, _node_count) = Lexicon::create("res/names.txt", "res/names.lex");
-        let lexicon = Lexicon::read("res/names.lex");
-
         let parts = PartRegistry::load_from_dir("res/parts");
+        let NewGame {
+            mut world,
+            bodies,
+            crafts,
+            station,
+        } = new_game(&parts, &tile_sets);
 
-        let mut station_parent = None;
-        let (planets, starter) = solar_system_gen::generate();
-        for (i, system) in planets.into_iter().enumerate() {
-            let name = lexicon.generate_word(7);
-            println!("Planet: {}", name);
-
-            let planet_entity = spawn_body(
-                system.planet.0,
-                system.planet.1,
-                SceneObject { bvh_node_id: None },
-                Named { name },
-                Some(ParentBody { id: sun_entity }),
-                &tile_sets,
-                &mut world,
-                &app.renderer,
-                &mut bvh,
-            );
-
-            bodies.push(planet_entity);
-            if i == starter {
-                station_parent = Some(planet_entity)
-            }
-
-            for moon in &system.moons {
-                let name = lexicon.generate_word(10);
-                println!("Moon: {}", name);
-                let moon_entity = spawn_body(
-                    moon.0,
-                    moon.1,
-                    SceneObject { bvh_node_id: None },
-                    Named { name },
-                    Some(ParentBody { id: planet_entity }),
-                    &tile_sets,
-                    &mut world,
-                    &app.renderer,
-                    &mut bvh,
-                );
-                bodies.push(moon_entity);
+        // Give the generated world its models and orbit lines
+        let mut bvh = BVH::<Entity>::new();
+        for &body in &bodies {
+            attach_body_model(&mut world, &app.renderer, &mut bvh, body);
+            if world.get::<&ParentBody>(body).is_ok() {
+                // skip the sun
+                spawn_body_orbit_line(&mut world, body);
             }
         }
 
-        let station_parent = station_parent.expect("generator returned no station host");
-        let parent_mu = world.get::<&Body>(station_parent).unwrap().mu;
-        let parent_body_radius = world.get::<&Body>(station_parent).unwrap().body_radius;
+        for &craft in &crafts {
+            attach_craft_model(&mut world, &app.renderer, &mut bvh, craft);
+            redraw_orbit(&mut world, &app.renderer, craft, None);
+        }
 
-        let station_payload = parts
-            .all()
-            .find(|p| p.id == "station_core")
-            .unwrap()
-            .instantiate_craft();
-
-        let station = spawn_craft(
-            station_payload,
-            Named {
-                name: String::from("Station"),
-            },
-            ParentBody { id: station_parent },
-            &mut world,
-        );
-        attach_craft_model(&mut world, &app.renderer, &mut bvh, station);
-        let station_state = State::from_kepler(
-            parent_body_radius * 16.0,
-            0.2,
-            0.0,
-            1.5,
-            0.15,
-            0.15,
-            EphemerisTime::new(0),
-            parent_mu,
-        );
-        world.insert_one(station, station_state).unwrap();
-        redraw_orbit(&mut world, &app.renderer, station, None);
-
-        let mut starting_inventory = PartInventory {
-            parts: HashMap::new(),
-        };
-
-        starting_inventory.add(id_hash("ilmenite"), 8);
-
-        world
-            .insert(
-                station,
-                (
-                    Station { num_crew: 2 },
-                    PortHost {
-                        dock_gen: 0,
-                        ports: 8,
-                    },
-                    starting_inventory,
-                ),
-            )
-            .unwrap();
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 0,
-            },
-            ResourceStore {
-                resource: Resource::Energy,
-                amount: 4.32e8,
-                capacity: 1.8e9,
-                amount_et: EphemerisTime::epoch(),
-            },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 1,
-            },
-            SolarPanel { rated_w: 100_000.0 },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 2,
-            },
-            ResourceStore {
-                resource: Resource::Water,
-                amount: 3800.0,
-                capacity: 3800.0,
-                amount_et: EphemerisTime::epoch(),
-            },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 3,
-            },
-            ResourceStore {
-                resource: Resource::Oxygen,
-                amount: 10.0,
-                capacity: 600.0,
-                amount_et: EphemerisTime::epoch(),
-            },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 4,
-            },
-            ResourceStore {
-                resource: Resource::Hydrogen,
-                amount: 0.0,
-                capacity: 100.0,
-                amount_et: EphemerisTime::epoch(),
-            },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 5,
-            },
-            Factory {
-                current_job: None,
-                pending_job: None,
-                power_watts: 5000.0,
-                enabled: false,
-                reserved_port: None,
-            },
-        ));
-        world.spawn((
-            Docking {
-                host: station,
-                own_port: 0,
-                host_port: 6,
-            },
-            Electrolyzer {
-                enabled: false,
-                power_watts: 5_000.0,
-                joules_per_kg_water: 2.52e7,
-            },
-        ));
-        crafts.push(station);
-
-        let mut selection = SelectionState::new(crafts, bodies, buildings);
+        let mut selection = SelectionState::new(crafts, bodies, vec![]);
         selection.set_selected(station, app.seconds as f64 - 1.0);
 
         let mut retval = Self {

@@ -1,20 +1,18 @@
 use apricot::{
     app::App,
-    bvh::BVH,
+    bvh::{BVHNodeId, BVH},
     camera::{Camera, ProjectionKind},
     high_precision::WorldPosition,
     rectangle::Rectangle,
-    render_core::{ModelComponent, RenderContext},
+    render_core::{MeshId, ModelComponent, RenderContext, TextureId},
     shadow_map::DirectionalLightSource,
 };
 use hecs::{Entity, World};
 use nalgebra_glm::{vec2, vec3, vec4, DVec3, Vec3};
 
 use crate::{
-    components::body::SceneObject,
-    render::camera::CameraRig,
-    scenes::starbox::Starbox,
-    sim::bodies::{Body, SurfaceTile},
+    render::{camera::CameraRig, starbox::Starbox},
+    sim::bodies::{Body, Category, SurfaceTile, TileClass},
 };
 
 pub struct SceneRenderer {
@@ -22,6 +20,10 @@ pub struct SceneRenderer {
     light: DirectionalLightSource,
     bvh: BVH<Entity>,
     starbox: Starbox,
+}
+
+pub struct SceneObject {
+    pub bvh_node_id: Option<BVHNodeId>,
 }
 
 impl SceneRenderer {
@@ -142,32 +144,78 @@ pub fn is_occluded(world: &World, camera_pos: DVec3, entity: Entity, relative_po
     false
 }
 
-/// Give a sim-spawned craft its model and BVH node
+pub fn attach_body_model(
+    world: &mut World,
+    renderer: &RenderContext,
+    bvh: &mut BVH<Entity>,
+    entity: Entity,
+) {
+    let body = *world.get::<&Body>(entity).unwrap();
+    let mesh_name = match body.tile_class() {
+        None => "uv",
+        Some(TileClass::Dwarf) => "ico-20",
+        Some(TileClass::Sub) => "ico-80",
+        Some(TileClass::Large) => "ico-320",
+    };
+    let mesh_id = renderer.get_mesh_id_from_name(mesh_name).unwrap();
+    let texture_id = body_texture(&body, renderer);
+    let r = body.body_radius;
+    attach_model(
+        world,
+        renderer,
+        bvh,
+        entity,
+        mesh_id,
+        texture_id,
+        vec3(0.01, 0.01, 0.01),
+    );
+}
+
 pub fn attach_craft_model(
     world: &mut World,
     renderer: &RenderContext,
     bvh: &mut BVH<Entity>,
     craft: Entity,
 ) {
-    let craft_mesh = renderer.get_mesh_id_from_name("cone").unwrap();
+    let mesh_id = renderer.get_mesh_id_from_name("cone").unwrap();
     let texture_id = renderer.get_texture_id_from_name("europa").unwrap();
-    let scale_vec: DVec3 = vec3(0.01, 0.01, 0.01);
+    attach_model(
+        world,
+        renderer,
+        bvh,
+        craft,
+        mesh_id,
+        texture_id,
+        vec3(0.01, 0.01, 0.01),
+    );
+}
+
+/// Insert a ModelComponent and a BVH node for `entity`.
+fn attach_model(
+    world: &mut World,
+    renderer: &RenderContext,
+    bvh: &mut BVH<Entity>,
+    entity: Entity,
+    mesh_id: MeshId,
+    texture_id: TextureId,
+    scale_vec: DVec3,
+) {
     let position: DVec3 = vec3(0., 0., 0.);
 
     let bvh_node_id = bvh.insert(
-        craft,
+        entity,
         renderer
-            .get_mesh_aabb(craft_mesh)
+            .get_mesh_aabb(mesh_id)
             .scale(nalgebra_glm::convert(scale_vec))
             .translate(nalgebra_glm::convert(position)),
     );
 
     world
         .insert(
-            craft,
+            entity,
             (
                 ModelComponent::new(
-                    craft_mesh,
+                    mesh_id,
                     texture_id,
                     nalgebra_glm::convert(position),
                     nalgebra_glm::convert(scale_vec),
@@ -178,4 +226,28 @@ pub fn attach_craft_model(
             ),
         )
         .unwrap();
+}
+
+fn body_texture(body: &Body, renderer: &RenderContext) -> TextureId {
+    if body.category == Category::Star {
+        return renderer.get_texture_id_from_name("sun").unwrap();
+    }
+
+    if body.gaseous() {
+        if !body.is_giant() {
+            renderer.get_texture_id_from_name("venus").unwrap()
+        } else if body.temperature > 120.0 {
+            renderer.get_texture_id_from_name("jupiter").unwrap()
+        } else {
+            renderer.get_texture_id_from_name("uranus").unwrap()
+        }
+    } else {
+        if body.habitable() {
+            renderer.get_texture_id_from_name("earth").unwrap()
+        } else if body.temperature < 200.0 {
+            renderer.get_texture_id_from_name("europa").unwrap()
+        } else {
+            renderer.get_texture_id_from_name("moon").unwrap()
+        }
+    }
 }

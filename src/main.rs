@@ -1,5 +1,4 @@
 mod astro;
-mod components;
 mod generation;
 mod hud;
 mod render;

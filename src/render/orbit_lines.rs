@@ -1,4 +1,4 @@
-use std::{collections::HashMap, f64::consts::PI, ops::Deref};
+use std::{collections::HashMap, f64::consts::PI};
 
 use apricot::{
     high_precision::WorldPosition,
@@ -181,6 +181,20 @@ pub fn redraw_orbit(
     craft: Entity,
     soi_radius: Option<f64>,
 ) {
+    let line = orbit_line(world, craft, soi_radius);
+    replace_line_path(world, renderer, craft, Some(line));
+}
+
+fn orbit_line(
+    world: &World,
+    craft: Entity,
+    soi_radius: Option<f64>,
+) -> (
+    WorldPosition,
+    ParentBody,
+    LinePathComponent,
+    AssociatedEntity,
+) {
     let state = *world.get::<&State>(craft).unwrap();
     let parent = world.get::<&ParentBody>(craft).unwrap().id;
     let parent_pos = world.get::<&WorldPosition>(parent).unwrap().pos;
@@ -193,15 +207,15 @@ pub fn redraw_orbit(
         .flat_map(|v| v.iter().map(|x| *x as f32))
         .collect();
 
-    replace_line_path(
-        world,
-        renderer,
-        craft,
-        Some((
-            WorldPosition { pos: parent_pos },
-            ParentBody { id: parent },
-            LinePathComponent::new(vertices),
-            AssociatedEntity { associate: craft },
-        )),
-    );
+    (
+        WorldPosition { pos: parent_pos },
+        ParentBody { id: parent },
+        LinePathComponent::new(vertices),
+        AssociatedEntity { associate: craft },
+    )
+}
+
+pub fn spawn_body_orbit_line(world: &mut World, body: Entity) {
+    let line = orbit_line(world, body, None);
+    world.spawn(line);
 }

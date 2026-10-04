@@ -32,6 +32,13 @@ pub enum Category {
     Star,
 }
 
+#[derive(Clone, Copy)]
+pub enum TileClass {
+    Dwarf,
+    Sub,
+    Large,
+}
+
 impl Body {
     pub fn gaseous(&self) -> bool {
         self.atmos_pressure > 1.58
@@ -47,6 +54,19 @@ impl Body {
 
     pub fn is_giant(&self) -> bool {
         self.body_radius > 2.5
+    }
+
+    pub fn tile_class(&self) -> Option<TileClass> {
+        const MARS_RADIUS: f64 = 0.532;
+        if self.gaseous() {
+            None
+        } else if self.body_radius > MARS_RADIUS {
+            Some(TileClass::Large)
+        } else if self.body_radius > MARS_RADIUS * 0.5 {
+            Some(TileClass::Sub)
+        } else {
+            Some(TileClass::Dwarf)
+        }
     }
 }
 
@@ -101,4 +121,14 @@ pub struct TileSets {
     pub dwarf: Vec<Tri>,
     pub sub: Vec<Tri>,
     pub large: Vec<Tri>,
+}
+
+impl TileSets {
+    pub fn for_class(&self, class: TileClass) -> &Vec<Tri> {
+        match class {
+            TileClass::Dwarf => &self.dwarf,
+            TileClass::Sub => &self.sub,
+            TileClass::Large => &self.large,
+        }
+    }
 }
