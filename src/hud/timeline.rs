@@ -386,7 +386,9 @@ impl<Msg: Clone + 'static> Widget<Msg> for Timeline {
             app.renderer.set_color(self.baseline_color);
             app.renderer.fill_rect(tick);
 
-            let label = format!("{} {}", et.short_month_name(), et.day_of_month());
+            let mon = et.short_month_name().unwrap_or("???");
+            let day = et.day_of_month().unwrap_or("???".into());
+            let label = format!("{} {}", mon, day);
             let font_id = app.renderer.get_current_font_id().unwrap();
             let font = app.renderer.get_font_from_id(font_id).unwrap();
             let width = font.measure(&label).x;

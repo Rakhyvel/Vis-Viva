@@ -120,7 +120,10 @@ impl Footer {
             .set(if view.paused { Icon::Play } else { Icon::Pause });
         self.can_speed_up.set(view.can_speed_up);
         self.can_slow_down.set(view.can_slow_down);
-        set_if_changed(&self.calendar, view.now.short_date());
+        set_if_changed(
+            &self.calendar,
+            view.now.short_date().unwrap_or("???".into()),
+        );
         set_if_changed(&self.speed_label, view.speed_label.to_string());
 
         let key = Some((
@@ -259,7 +262,7 @@ fn event_row(mark: &TimelineMark, accented: bool, app: &App) -> Box<dyn Widget<T
                 Label::new(mark.subject.clone())
                     .font(font, app)
                     .color(subject_color),
-                Label::new(mark.t.short_date()).font(font, app),
+                Label::new(mark.t.short_date().unwrap_or("???".into())).font(font, app),
             )
             .flow(Flow::Horizontal)
             .justify(Justify::SpaceBetween)

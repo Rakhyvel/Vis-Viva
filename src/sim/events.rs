@@ -229,16 +229,8 @@ pub fn schedule_events(world: &World, events: &mut EventQueue) {
     for (entity, command) in crafts_with_commands {
         match command {
             Command::Transfer { to, plan, .. } => {
-                let departure_time = plan.transfer_state.t;
                 let arrival_time = plan.flyby_state.t;
                 let circ_time = plan.circ_state.t;
-
-                println!("departure_time: {}", departure_time.as_calendar());
-                println!("arrival_time.t: {}", arrival_time.as_calendar());
-                println!("circ_time.t: {}", circ_time.as_calendar());
-
-                assert!(departure_time < arrival_time);
-                assert!(arrival_time < circ_time);
 
                 let sois = command.transition_schedule();
                 events.push(
@@ -269,16 +261,8 @@ pub fn schedule_events(world: &World, events: &mut EventQueue) {
                 events.push(circ_time, Event::CompleteCommand { craft: entity });
             }
             Command::Flyby { to, from, plan, .. } => {
-                let departure_time = plan.transfer_state.t;
                 let arrival_time = plan.flyby_state.t;
                 let exit_time = plan.exit_state.t;
-
-                println!("departure_time: {}", departure_time.as_calendar());
-                println!("arrival_time.t: {}", arrival_time.as_calendar());
-                println!("exit_time.t: {}", exit_time.as_calendar());
-
-                assert!(departure_time < arrival_time);
-                assert!(arrival_time < exit_time);
 
                 let sois = command.transition_schedule();
 
@@ -342,13 +326,7 @@ pub fn schedule_events(world: &World, events: &mut EventQueue) {
                 events.push(arrival_time, Event::CompleteCommand { craft: entity });
             }
             Command::Escape { to, plan, .. } => {
-                let departure_time = plan.escape_burn.t;
                 let arrival_time = plan.exit_state.t;
-
-                println!("departure_time: {}", departure_time.as_calendar());
-                println!("arrival_time.t: {}", arrival_time.as_calendar());
-
-                assert!(departure_time < arrival_time);
 
                 let sois = command.transition_schedule();
                 events.push(
@@ -382,11 +360,6 @@ pub fn schedule_events(world: &World, events: &mut EventQueue) {
                 let launch_time = plan.launch_burn.t;
                 let circ_time = plan.circ_burn.t;
 
-                println!("launch_time: {}", launch_time.as_calendar());
-                println!("circ_time.t: {}", circ_time.as_calendar());
-
-                assert!(launch_time < circ_time);
-
                 events.push(launch_time, Event::Launch { craft: entity });
 
                 for burn in command.burn_schedule() {
@@ -406,13 +379,7 @@ pub fn schedule_events(world: &World, events: &mut EventQueue) {
                 events.push(circ_time, Event::CompleteCommand { craft: entity });
             }
             Command::Land { plan, .. } => {
-                let deorbit_time = plan.deorbit_burn.t;
                 let land_time = plan.landing_burn.t;
-
-                println!("deorbit_time: {}", deorbit_time.as_calendar());
-                println!("land_time.t: {}", land_time.as_calendar());
-
-                assert!(deorbit_time < land_time);
 
                 for burn in command.burn_schedule() {
                     events.push(

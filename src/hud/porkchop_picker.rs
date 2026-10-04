@@ -140,7 +140,7 @@ impl<Msg> PorkchopPicker<Msg> {
                 .fill_rect(Rectangle::new(x, bottom, 1.0, TICK_LEN));
 
             // Label centered under the tick, skipped if it would collide or overflow
-            let label = depart_tick_label(et, step_secs);
+            let label = depart_tick_label(et, step_secs).unwrap_or("???".into());
             let w = f.measure(&label).x;
             let left = (x - w * 0.5).round();
             if left > last_right + MIN_LABEL_GAP && left + w <= right {
@@ -155,8 +155,10 @@ impl<Msg> PorkchopPicker<Msg> {
 
         let title = if step_secs >= SECONDS_PER_YEAR {
             String::from("DEPARTURE")
+        } else if let Some(year) = a.depart_start.year() {
+            format!("DEPARTURE {:04}", year)
         } else {
-            format!("DEPARTURE {:04}", a.depart_start.year())
+            format!("DEPARTURE ???")
         };
 
         let size = f.measure(&title);
@@ -297,14 +299,14 @@ impl<Msg: Clone + 'static> Widget<Msg> for PorkchopPicker<Msg> {
     }
 }
 
-fn depart_tick_label(et: EphemerisTime, step_secs: f64) -> String {
-    if step_secs >= SECONDS_PER_YEAR {
-        format!("{:04}", et.year())
+fn depart_tick_label(et: EphemerisTime, step_secs: f64) -> Option<String> {
+    Some(if step_secs >= SECONDS_PER_YEAR {
+        format!("{:04}", et.year()?)
     } else if step_secs >= SECONDS_PER_DAY {
-        format!("{} {}", et.day_of_month(), et.short_month_name())
+        format!("{} {}", et.day_of_month()?, et.short_month_name()?)
     } else {
-        et.hour_minute()
-    }
+        et.hour_minute()?
+    })
 }
 
 fn tof_tick_label(tof_secs: f64, step_secs: f64) -> String {

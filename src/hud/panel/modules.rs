@@ -290,7 +290,7 @@ fn fabricator_section(ctx: &PanelCtx, module: Entity) -> Section {
         let part_name = &ctx.parts.get(job.part_id).unwrap().name;
 
         let ready_text = match job.completion_et(&factory, ctx.now) {
-            Some(et) => format!("Ready: {}", et.as_calendar()),
+            Some(et) => format!("Ready: {}", et.as_calendar().unwrap_or("???".into())),
             None => String::from("Ready:"),
         };
 
@@ -344,7 +344,13 @@ fn fabricator_section(ctx: &PanelCtx, module: Entity) -> Section {
         let completion = ctx.now + EphemerisTime::from_secs(build_time_secs as f64);
 
         out.push(Label::new(format!("Queued: {}", part.name)).font(font, ctx.app));
-        out.push(Label::new(format!("Ready {}", completion.as_calendar())).font(font, ctx.app));
+        out.push(
+            Label::new(format!(
+                "Ready {}",
+                completion.as_calendar().unwrap_or("???".into())
+            ))
+            .font(font, ctx.app),
+        );
         out.push(Label::bound(countdown.clone()).font(font, ctx.app));
         out.push(
             Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")

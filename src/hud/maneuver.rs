@@ -403,18 +403,18 @@ impl ManeuverModal {
             *self.result_dv_text.borrow_mut() = dv;
         }
 
-        let depart_date = self
-            .computed_plan
-            .as_ref()
-            .map_or_else(|| String::from("-"), |p| p.departure_et().as_calendar());
+        let depart_date = self.computed_plan.as_ref().map_or_else(
+            || String::from("-"),
+            |p| p.departure_et().as_calendar().unwrap_or("???".into()),
+        );
         if *self.result_depart_text.borrow() != depart_date {
             *self.result_depart_text.borrow_mut() = depart_date;
         }
 
-        let arrival_date = self
-            .computed_plan
-            .as_ref()
-            .map_or_else(|| String::from("-"), |p| p.arrival_et().as_calendar());
+        let arrival_date = self.computed_plan.as_ref().map_or_else(
+            || String::from("-"),
+            |p| p.arrival_et().as_calendar().unwrap_or("???".into()),
+        );
         if *self.result_date_text.borrow() != arrival_date {
             *self.result_date_text.borrow_mut() = arrival_date;
         }

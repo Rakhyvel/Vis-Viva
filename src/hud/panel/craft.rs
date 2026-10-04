@@ -186,7 +186,7 @@ fn burn_card(ctx: &PanelCtx, burn: &ScheduledBurn) -> Section {
                 .fixed_width(vec2(WIDTH - 16.0, 0.0)),
             ),
             Box::new(
-                Label::new(burn.t().as_calendar())
+                Label::new(burn.t().as_calendar().unwrap_or("???".into()))
                     .font(font, ctx.app)
                     .color(date_color),
             ),

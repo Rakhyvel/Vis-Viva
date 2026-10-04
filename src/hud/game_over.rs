@@ -54,7 +54,7 @@ impl GameOverUi {
                 Box::new(HRule::new(STYLE.border, 1.0, WIDTH)),
                 Box::new(Label::new(format!("{station}: {reason}")).font(font, app)),
                 Box::new(
-                    Label::new(when.short_date())
+                    Label::new(when.short_date().unwrap_or("???".into()))
                         .font(font, app)
                         .color(STYLE.text_secondary),
                 ),

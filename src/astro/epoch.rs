@@ -21,42 +21,44 @@ const ET_PER_MINUTE: f64 = SECONDS_PER_MINUTE * ET_PER_SECOND;
 const ET_PER_HOUR: f64 = SECONDS_PER_HOUR * ET_PER_SECOND;
 
 impl EphemerisTime {
-    pub fn new(microsecs: i64) -> Self {
+    const EPOCH_UNIX_SECS: i64 = -62_167_219_200;
+
+    pub const fn new(microsecs: i64) -> Self {
         Self(microsecs)
     }
 
-    pub fn from_years(years: f64) -> Self {
+    pub const fn from_years(years: f64) -> Self {
         Self((years * ET_PER_YEAR) as i64)
     }
 
     #[allow(dead_code)]
-    pub fn from_days(days: f64) -> Self {
+    pub const fn from_days(days: f64) -> Self {
         Self((days * ET_PER_DAY) as i64)
     }
 
-    pub fn from_mins(mins: f64) -> Self {
+    pub const fn from_mins(mins: f64) -> Self {
         Self((mins * ET_PER_MINUTE) as i64)
     }
 
-    pub fn from_secs(secs: f64) -> Self {
+    pub const fn from_secs(secs: f64) -> Self {
         Self((secs * ET_PER_SECOND) as i64)
     }
 
-    pub fn as_years(self) -> f64 {
+    pub const fn as_years(self) -> f64 {
         (self.0 as f64) / ET_PER_YEAR
     }
 
     #[allow(dead_code)]
-    pub fn as_days(self) -> f64 {
+    pub const fn as_days(self) -> f64 {
         (self.0 as f64) / ET_PER_DAY
     }
 
     #[allow(dead_code)]
-    pub fn as_hours(self) -> f64 {
+    pub const fn as_hours(self) -> f64 {
         (self.0 as f64) / ET_PER_HOUR
     }
 
-    pub fn as_secs(self) -> f64 {
+    pub const fn as_secs(self) -> f64 {
         (self.0 as f64) / ET_PER_SECOND
     }
 
@@ -65,65 +67,71 @@ impl EphemerisTime {
         Self(((t + s - 1).div_euclid(s)) * s)
     }
 
-    fn as_datetime(&self) -> DateTime<Utc> {
+    const fn as_datetime(&self) -> Option<DateTime<Utc>> {
         let secs = self.0.div_euclid(1_000_000);
         let micros = self.0.rem_euclid(1_000_000) * 1000; // always positive
 
-        chrono::DateTime::from_timestamp(secs, micros as u32).unwrap()
+        chrono::DateTime::from_timestamp(secs, micros as u32)
     }
 
-    pub fn as_calendar(&self) -> String {
-        let dt = self.as_datetime();
-        format!(
+    pub const fn epoch() -> Self {
+        Self(Self::EPOCH_UNIX_SECS * 1_000_000)
+    }
+
+    pub fn as_calendar(&self) -> Option<String> {
+        let dt = self.as_datetime()?;
+        Some(format!(
             "{:04}-{:02}-{:02} {:02}:{:02}",
             dt.year(),
             dt.month(),
             dt.day(),
             dt.hour(),
             dt.minute()
+        ))
+    }
+
+    pub fn short_month_name(&self) -> Option<&'static str> {
+        let dt = self.as_datetime()?;
+        Some(
+            [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ][dt.month() as usize - 1],
         )
     }
 
-    pub fn short_month_name(&self) -> &'static str {
-        let dt = self.as_datetime();
-        [
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-        ][dt.month() as usize - 1]
+    pub fn day_of_month(&self) -> Option<String> {
+        let dt = self.as_datetime()?;
+        Some(format!("{:02}", dt.day()))
     }
 
-    pub fn day_of_month(&self) -> String {
-        let dt = self.as_datetime();
-        format!("{:02}", dt.day())
+    pub fn year(&self) -> Option<i32> {
+        Some(self.as_datetime()?.year())
     }
 
-    pub fn year(&self) -> i32 {
-        self.as_datetime().year()
+    pub fn hour_minute(&self) -> Option<String> {
+        let dt = self.as_datetime()?;
+        Some(format!("{:02}:{:02}", dt.hour(), dt.minute()))
     }
 
-    pub fn hour_minute(&self) -> String {
-        let dt = self.as_datetime();
-        format!("{:02}:{:02}", dt.hour(), dt.minute())
-    }
-
-    pub fn short_datetime(&self) -> String {
-        let dt = self.as_datetime();
-        format!(
+    pub fn short_datetime(&self) -> Option<String> {
+        let dt = self.as_datetime()?;
+        Some(format!(
             "{:02} {} {:02}:{:02}",
             dt.day(),
-            self.short_month_name(),
+            self.short_month_name()?,
             dt.hour(),
             dt.minute()
-        )
+        ))
     }
 
-    pub fn short_date(&self) -> String {
-        let dt = self.as_datetime();
-        format!(
+    pub fn short_date(&self) -> Option<String> {
+        let dt = self.as_datetime()?;
+        Some(format!(
             "{:02} {} {:04}",
             dt.day(),
-            self.short_month_name(),
+            self.short_month_name()?,
             dt.year(),
-        )
+        ))
     }
 
     /// Compact duration formatting. Negative durations clamp to zero.
@@ -146,14 +154,6 @@ impl EphemerisTime {
         } else {
             format!("{h}h {m:02}m")
         }
-    }
-
-    pub fn epoch() -> Self {
-        let dt = chrono::NaiveDate::from_ymd_opt(0, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap();
-        Self(dt.and_utc().timestamp() * 1_000_000)
     }
 }
 
