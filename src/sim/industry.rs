@@ -118,7 +118,9 @@ pub fn cost_status(
     registry: &PartRegistry,
     t: EphemerisTime,
 ) -> Vec<CostLine> {
-    let inventory = world.get::<&PartInventory>(station).unwrap();
+    let inventory = world
+        .get::<&PartInventory>(station)
+        .expect("fabricator hosts have a part inventory");
 
     let (parts, resources) = station_reserved(world, station, registry);
 
@@ -237,7 +239,8 @@ pub fn commit_pending_builds(world: &World, parts: &PartRegistry, now: Ephemeris
             let mut inv = world.get::<&mut PartInventory>(station).unwrap();
             for (id, n) in &cost.parts {
                 for _ in 0..*n {
-                    inv.take(*id).unwrap();
+                    inv.take(*id)
+                        .expect("queue_build ony accepts affordable builds");
                 }
             }
         }
@@ -291,7 +294,13 @@ pub fn complete_due_jobs(
 
         // For now just eject the stage
         if def.cost.ports_required > 0 {
-            let host_port = { world.get::<&Factory>(fab).unwrap().reserved_port.unwrap() };
+            let host_port = {
+                world
+                    .get::<&Factory>(fab)
+                    .unwrap()
+                    .reserved_port
+                    .expect("builds that need a port reserved one when queued")
+            };
             deliver_craft(world, parent, &def, host_port, now, effects);
         } else {
             let mut part_inventory = world.get::<&mut PartInventory>(parent).unwrap();
@@ -381,7 +390,7 @@ fn deliver_craft(
                 own_port,
             },
         )
-        .unwrap();
+        .expect("part loading guarantees craft have a spare port for docking");
 }
 
 /// Queue `part_id` on a fabricator. It starts, and gets paid for, at the next Play

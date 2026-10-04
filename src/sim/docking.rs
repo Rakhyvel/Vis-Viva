@@ -98,8 +98,14 @@ pub fn undock(world: &mut World, craft: Entity, now: EphemerisTime) -> bool {
     let Ok(host) = world.get::<&Docking>(craft).map(|d| d.host) else {
         return false;
     };
-    let parent = world.get::<&ParentBody>(craft).unwrap().id;
-    let parent_mu = world.get::<&Body>(parent).unwrap().mu;
+    let parent = world
+        .get::<&ParentBody>(craft)
+        .expect("craft always have a ParentBody")
+        .id;
+    let parent_mu = world
+        .get::<&Body>(parent)
+        .expect("ParentBodys are always Bodies")
+        .mu;
 
     let Ok(host_state) = world.get::<&State>(host).map(|s| *s) else {
         return false; // host wasn't orbiting

@@ -167,7 +167,10 @@ pub fn apply(world: &mut World, now: EphemerisTime, event: Event, effects: &mut 
                 let craft_state = world.get::<&State>(craft).unwrap();
                 let parent_id = world.get::<&ParentBody>(craft).unwrap().id;
                 let parent_body_mu = world.get::<&Body>(parent_id).unwrap().mu;
-                craft_state.propagate(now, parent_body_mu).unwrap().r
+                craft_state
+                    .propagate(now, parent_body_mu)
+                    .expect("orbit should propagate")
+                    .r
             };
             commit_station(world, craft, now);
             world.insert(craft, (Landed { offset },)).unwrap();

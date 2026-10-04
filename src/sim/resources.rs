@@ -104,10 +104,13 @@ pub fn station_resource_totals(
 
 /// Interpolates the amount for a specific resource store
 pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) -> f32 {
-    let station = world.get::<&Docking>(module).unwrap().host;
-    let Ok(store) = world.get::<&ResourceStore>(module) else {
-        return 0.0;
-    };
+    let station = world
+        .get::<&Docking>(module)
+        .expect("resource stores are always docked to a host")
+        .host;
+    let store = world
+        .get::<&ResourceStore>(module)
+        .expect("resource_store_amount is only called on stores");
 
     let flow = station_resource_amount_flow(world, station, store.resource, false);
 
@@ -133,7 +136,9 @@ pub fn commit_station(world: &World, station: Entity, now: EphemerisTime) {
 pub fn commit_resource_stores(world: &World, station: Entity, r: Resource, now: EphemerisTime) {
     for module in stores_of(world, station, r) {
         let current = resource_store_amount(world, module, now);
-        let mut s = world.get::<&mut ResourceStore>(module).unwrap();
+        let mut s = world
+            .get::<&mut ResourceStore>(module)
+            .expect("stores_of only returns ResourceStores entities");
         s.amount = current;
         s.amount_et = now;
     }
@@ -148,7 +153,9 @@ pub fn add_resource(world: &World, station: Entity, r: Resource, amount: f32, no
     let headroom: Vec<f32> = resource_stores
         .iter()
         .map(|m| {
-            let s = world.get::<&ResourceStore>(*m).unwrap();
+            let s = world
+                .get::<&ResourceStore>(*m)
+                .expect("stores_of only returns ResourceStores entities");
             (s.capacity - s.amount).max(0.0)
         })
         .collect();
@@ -161,7 +168,9 @@ pub fn add_resource(world: &World, station: Entity, r: Resource, amount: f32, no
     // fill up to what we each store can accept
     let accepted = amount.min(total);
     for (m, h) in resource_stores.iter().zip(headroom) {
-        let mut store = world.get::<&mut ResourceStore>(*m).unwrap();
+        let mut store = world
+            .get::<&mut ResourceStore>(*m)
+            .expect("stores_of only returns ResourceStores entities");
         store.amount = (store.amount + accepted * h / total).min(store.capacity);
     }
 }
@@ -183,7 +192,9 @@ pub fn take_resource(world: &World, station: Entity, r: Resource, amount: f32, n
 
     // draw down proportionally to what each holds
     for (m, a) in modules.iter().zip(amounts) {
-        let mut store = world.get::<&mut ResourceStore>(*m).unwrap();
+        let mut store = world
+            .get::<&mut ResourceStore>(*m)
+            .expect("stores_of only returns ResourceStores entities");
         store.amount = a - amount * a / total;
     }
 }
