@@ -25,12 +25,7 @@ pub struct Craft {
 
 pub fn spawn_craft(craft: Craft, named: Named, parent: ParentBody, world: &mut World) -> Entity {
     let position: DVec3 = vec3(0., 0., 0.);
-
-    let craft_entity = world.spawn((WorldPosition { pos: position },));
-
-    world.insert(craft_entity, (named, parent, craft)).unwrap();
-
-    craft_entity
+    world.spawn((WorldPosition { pos: position }, named, parent, craft))
 }
 
 pub fn usable_propellant_kg(world: &World, craft: Entity, t: EphemerisTime) -> f64 {

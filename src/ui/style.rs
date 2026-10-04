@@ -2,7 +2,6 @@ use nalgebra_glm::Vec4;
 
 use crate::ui::oklch::oklch;
 
-#[allow(dead_code)]
 pub struct Style {
     // Backgrounds
     pub surface_deep: Vec4,

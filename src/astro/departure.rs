@@ -2,7 +2,6 @@ use std::f64::consts::PI;
 
 use crate::astro::{epoch::EphemerisTime, lambert::TransferKind, porkchop::Cell, state::State};
 
-#[allow(unused)]
 #[derive(Debug)]
 pub enum TransferObjective {
     /// minimize total delta-v

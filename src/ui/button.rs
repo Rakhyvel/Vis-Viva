@@ -142,13 +142,11 @@ impl<Msg> Button<Msg> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn background_color(mut self, background_color: Vec4) -> Self {
         self.background_color = background_color;
         self
     }
 
-    #[allow(dead_code)]
     pub fn hovered_color(mut self, hovered_color: Vec4) -> Self {
         self.hovered_color = hovered_color;
         self
@@ -190,7 +188,6 @@ impl<Msg> Button<Msg> {
         self
     }
 
-    #[allow(dead_code)]
     pub fn use_style_if(self, style: &Style, condition: bool) -> Self {
         if !condition {
             return self;
@@ -198,7 +195,6 @@ impl<Msg> Button<Msg> {
         self.use_style(style)
     }
 
-    #[allow(dead_code)]
     pub fn use_style_accented_if(self, style: &Style, condition: bool) -> Self {
         if !condition {
             return self;

@@ -14,7 +14,6 @@ use crate::astro::units::{
 pub struct EphemerisTime(i64);
 
 pub const ET_PER_SECOND: f64 = 1_000_000.0;
-#[allow(dead_code)]
 const ET_PER_YEAR: f64 = SECONDS_PER_YEAR * ET_PER_SECOND;
 const ET_PER_DAY: f64 = SECONDS_PER_DAY * ET_PER_SECOND;
 const ET_PER_MINUTE: f64 = SECONDS_PER_MINUTE * ET_PER_SECOND;
@@ -31,7 +30,6 @@ impl EphemerisTime {
         Self((years * ET_PER_YEAR) as i64)
     }
 
-    #[allow(dead_code)]
     pub const fn from_days(days: f64) -> Self {
         Self((days * ET_PER_DAY) as i64)
     }
@@ -48,12 +46,10 @@ impl EphemerisTime {
         (self.0 as f64) / ET_PER_YEAR
     }
 
-    #[allow(dead_code)]
     pub const fn as_days(self) -> f64 {
         (self.0 as f64) / ET_PER_DAY
     }
 
-    #[allow(dead_code)]
     pub const fn as_hours(self) -> f64 {
         (self.0 as f64) / ET_PER_HOUR
     }

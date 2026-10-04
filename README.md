@@ -97,7 +97,6 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
 - [ ] Post-MVP cleanup
   - [ ] split up big stuff:
     - [x] split `state.rs` so it returns DVec3 samples and leaves f32 conversion to rendering
-    - [ ] eliminate unwrap()s
     - [ ] eliminate #[allow(...)]s
       - spawn_factory
       - has_habitable

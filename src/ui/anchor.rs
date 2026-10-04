@@ -3,7 +3,6 @@ use apricot::{app::App, rectangle::Rectangle};
 use nalgebra_glm::{vec2, Vec2};
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 pub enum AnchorPoint {
     TopLeft,
     TopCenter,
@@ -40,7 +39,6 @@ impl<Msg: Clone + 'static> Anchor<Msg> {
         self
     }
 
-    #[allow(dead_code)]
     pub fn set_child(&mut self, child: Box<dyn Widget<Msg>>) {
         self.child = child;
         self.layout(self.rect.pos);

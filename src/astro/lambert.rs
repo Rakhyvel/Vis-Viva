@@ -3,7 +3,6 @@ use std::f64::consts::PI;
 use nalgebra_glm::DVec3;
 
 use crate::astro::stumpff::stumpff_c2_c3;
-#[allow(unused)]
 use crate::astro::{epoch::EphemerisTime, state::State};
 
 const LAMBERT_EPSILON: f64 = 1e-4; // General epsilon

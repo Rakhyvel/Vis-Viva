@@ -10,7 +10,6 @@ pub struct Body {
     pub category: Category,
     pub body_radius: f64, // In earth radii
     pub rotation_period_hours: f64,
-    #[allow(unused)]
     pub rotation: f64,
     pub atmos_pressure: f64, // In bar
     pub temperature: f64,    // In K
@@ -71,7 +70,6 @@ impl Body {
 }
 
 /// Tags a building entity with the tile index it occupies on its parent body
-#[allow(dead_code)]
 pub struct SurfaceTile {
     pub index: u32,
 }
@@ -91,7 +89,6 @@ impl TileMap {
         }
     }
 
-    #[allow(dead_code)]
     pub fn is_free(&self, index: u32) -> bool {
         self.occupant(index).is_none()
     }
@@ -100,7 +97,6 @@ impl TileMap {
         self.occupants[index as usize] = Some(entity);
     }
 
-    #[allow(dead_code)]
     pub fn free(&mut self, index: u32) {
         self.occupants[index as usize] = None;
     }

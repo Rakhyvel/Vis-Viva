@@ -23,13 +23,10 @@ pub enum Justify {
     /// pack at beginning, padding between children
     Start,
     /// pack together, centered in the available space
-    #[allow(unused)]
     Center,
     /// pack at end, padding between children
-    #[allow(unused)]
     End,
     /// distribute leftover evenly, including the ends
-    #[allow(unused)]
     SpaceAround,
     /// distribute leftover evenly, flush to both ends
     SpaceBetween,
@@ -90,7 +87,6 @@ impl<Msg: Clone + 'static> Container<Msg> {
         self
     }
 
-    #[allow(dead_code)]
     pub fn fixed_size(mut self, size: Vec2) -> Self {
         self.rect.size = size;
         self.fixed_height = true;

@@ -73,14 +73,19 @@ impl Clock {
 
     /// Advance by one frame at the current rate. Returns Some(t) if we hit run_until and paused there
     pub fn advance(&mut self, real_dt: f64) -> Option<EphemerisTime> {
-        let mut t = self.now + EphemerisTime::from_secs(real_dt * self.get_rate());
-        let stopped = self.run_until.is_some_and(|stop| t >= stop);
-        if stopped {
-            t = self.run_until.unwrap();
-            self.paused = true;
+        let t = self.now + EphemerisTime::from_secs(real_dt * self.get_rate());
+
+        match self.run_until {
+            Some(stop) if t >= stop => {
+                self.now = stop; // land exactly on the boundary
+                self.paused = true;
+                Some(stop)
+            }
+            _ => {
+                self.now = t;
+                None
+            }
         }
-        self.now = t;
-        stopped.then_some(t)
     }
 
     /// Pause and forget the next stop

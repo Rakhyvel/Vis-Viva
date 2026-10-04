@@ -38,19 +38,16 @@ impl ProgressBar {
         self
     }
 
-    #[allow(dead_code)]
     pub fn background_color(mut self, background_color: Vec4) -> Self {
         self.background_color = background_color;
         self
     }
 
-    #[allow(dead_code)]
     pub fn fill_color(mut self, fill_color: Vec4) -> Self {
         self.fill_color = fill_color;
         self
     }
 
-    #[allow(dead_code)]
     pub fn border(mut self, color: nalgebra_glm::Vec4, width: f32) -> Self {
         self.border = Some((color, width));
         self

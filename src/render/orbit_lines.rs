@@ -200,9 +200,11 @@ fn orbit_line(
     let parent_pos = world.get::<&WorldPosition>(parent).unwrap().pos;
     let parent_mu = world.get::<&Body>(parent).unwrap().mu;
 
-    let vertices: Vec<f32> = state
+    let high_precision_vertices: Vec<DVec3> = state
         .generate_orbit_vertices(8192, parent_mu, soi_radius)
-        .unwrap()
+        .unwrap_or(vec![]);
+
+    let vertices: Vec<f32> = high_precision_vertices
         .iter()
         .flat_map(|v| v.iter().map(|x| *x as f32))
         .collect();

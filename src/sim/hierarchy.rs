@@ -31,7 +31,10 @@ pub fn orbit_system(world: &mut World, now: EphemerisTime) {
     // Build parent -> children map
     let mut children: HashMap<Entity, Vec<Entity>> = HashMap::new();
 
-    for (entity, (parent, _)) in world.query::<(&ParentBody, &State)>().iter() {
+    for (entity, (parent, _, _)) in world
+        .query::<(&ParentBody, &State, &WorldPosition)>()
+        .iter()
+    {
         children.entry(parent.id).or_default().push(entity);
     }
 
@@ -43,20 +46,21 @@ pub fn orbit_system(world: &mut World, now: EphemerisTime) {
 
     // Find roots (entities without parent)
     let mut roots = Vec::new();
-    for (entity, _) in world.query::<(&WorldPosition, &Body)>().iter() {
+    for (entity, (_world_pos, body)) in world.query::<(&WorldPosition, &Body)>().iter() {
         if !has_parent.contains_key(&entity) {
-            roots.push(entity);
+            roots.push((entity, body.mu));
         }
     }
 
     // Kick off from roots
-    for root in roots {
-        let mu = world.get::<&Body>(root).unwrap().mu;
+    for (root, mu) in roots {
         let root_pos = vec3(0.0, 0.0, 0.0);
         propagate(world, &children, root, root_pos, mu, now);
     }
 }
 
+/// Update the WorldPosition of an entity who is in orbit around some central body.
+/// `entity` must have `WorldPosition` assigned.
 fn propagate(
     world: &World,
     children: &HashMap<Entity, Vec<Entity>>,
@@ -65,7 +69,9 @@ fn propagate(
     parent_mu: f64,
     t: EphemerisTime,
 ) {
-    let mut world_pos = world.get::<&mut WorldPosition>(entity).unwrap();
+    let mut world_pos = world
+        .get::<&mut WorldPosition>(entity)
+        .expect("`entity` must have WorldPosition to update");
 
     let local_offset = if let Ok(orbit) = world.get::<&State>(entity) {
         match orbit.propagate(t, parent_mu) {
@@ -99,7 +105,9 @@ pub fn landed_system(world: &mut World) {
     for (_entity, (world_pos, parent, landed)) in
         world.query_mut::<(&mut WorldPosition, &ParentBody, &Landed)>()
     {
-        let parent_pos = pos_map.get(&parent.id).unwrap();
+        let parent_pos = pos_map
+            .get(&parent.id)
+            .expect("landed craft's parent body must have a WorldPositon");
         world_pos.pos = parent_pos + landed.offset;
     }
 }
@@ -112,9 +120,10 @@ pub fn docked_position_system(world: &mut World) {
     }
 
     for (_, (world_pos, docking)) in world.query_mut::<(&mut WorldPosition, &Docking)>() {
-        if let Some(host_pos) = pos_map.get(&docking.host) {
-            world_pos.pos = *host_pos;
-        }
+        let host_pos = pos_map
+            .get(&docking.host)
+            .expect("docked craft's host must have a WorldPositon");
+        world_pos.pos = *host_pos;
     }
 }
 
@@ -153,5 +162,5 @@ pub fn set_orbit(world: &mut World, craft: Entity, new_craft_orbit: State, new_p
     world.remove_one::<State>(craft).ok();
     world
         .insert(craft, (new_craft_orbit, ParentBody { id: new_parent }))
-        .unwrap();
+        .expect("The craft doesn't exist!");
 }

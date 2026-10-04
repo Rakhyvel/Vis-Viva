@@ -224,7 +224,7 @@ impl State {
                 et += EphemerisTime::from_secs(step_secs); // TODO: It's possible to overflow here?!
             }
         } else {
-            let soi_radius = soi_radius.expect("must specify a SOI radius for hyperbolic orbits");
+            let soi_radius = soi_radius.ok_or("must specify a SOI radius for hyperbolic orbits")?;
             let mut closest_dist = f64::INFINITY;
             let mut et = self.t;
             loop {

@@ -21,7 +21,6 @@ pub struct BodySystem {
 }
 
 struct MassCategory {
-    #[allow(unused)]
     category: Category,
     range: (f64, f64),
     weight: f64,
@@ -274,14 +273,12 @@ fn max_moons(body_radius: f64) -> usize {
     (8.0 * (1.0 - (-body_radius / 5.0).exp())).round() as usize
 }
 
-#[allow(dead_code)]
 fn has_habitable(planets: &[BodySystem]) -> bool {
     planets.iter().any(|p| {
         p.planet.0.habitable() && p.planet.0.category == Category::EarthLike && !p.moons.is_empty()
     })
 }
 
-#[allow(dead_code)]
 fn has_planet(planets: &[BodySystem], categories: &[Category], thresh: usize) -> bool {
     let count = planets
         .iter()
@@ -290,7 +287,6 @@ fn has_planet(planets: &[BodySystem], categories: &[Category], thresh: usize) ->
     count >= thresh
 }
 
-#[allow(dead_code)]
 fn all_moons_small(planets: &Vec<BodySystem>) -> bool {
     for system in planets {
         let limit = if system.planet.0.is_giant() {
@@ -309,7 +305,6 @@ fn all_moons_small(planets: &Vec<BodySystem>) -> bool {
     true
 }
 
-#[allow(dead_code)]
 fn no_stripped(planets: &[BodySystem]) -> bool {
     planets
         .iter()
