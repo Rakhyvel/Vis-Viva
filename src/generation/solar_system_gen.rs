@@ -21,7 +21,6 @@ pub struct BodySystem {
 }
 
 struct MassCategory {
-    category: Category,
     range: (f64, f64),
     weight: f64,
 }
@@ -34,54 +33,54 @@ enum AtmosClass {
 }
 
 const PLANET_MASS_CATEGORIES: &[MassCategory] = &[
+    // Dwarf
     MassCategory {
-        category: Category::Dwarf,
         range: (0.1, 0.3),
         weight: 4.0,
     },
+    // Sub earth
     MassCategory {
-        category: Category::SubEarth,
         range: (0.3, 0.8),
         weight: 10.0,
     },
+    // Earth-like
     MassCategory {
-        category: Category::EarthLike,
         range: (0.8, 1.5),
         weight: 10.0,
     },
+    // Super Earth
     MassCategory {
-        category: Category::SuperEarth,
         range: (1.5, 1.9),
         weight: 7.0,
     },
+    // Mini-Neptune
     MassCategory {
-        category: Category::MiniNeptune,
         range: (1.9, 4.0),
         weight: 12.0,
     },
+    // Gas giant
     MassCategory {
-        category: Category::GasGiant,
         range: (4.0, 11.7),
         weight: 7.0,
     },
 ];
 
 const MOON_MASS_CATEGORIES: &[MassCategory] = &[
+    // Teeny guys (Mimas, Enceladus)
     MassCategory {
-        category: Category::Dwarf,
         range: (0.03, 0.10),
         weight: 10.0,
-    }, // Teeny guys (Mimas, Enceladus)
+    },
+    // Normal guys (Rhea, Triton, Europa)
     MassCategory {
-        category: Category::Dwarf,
         range: (0.10, 0.25),
         weight: 6.0,
-    }, // Normal guys (Rhea, Triton, Europa)
+    },
+    // BIG GUYS (the Moon, Io, Callisto, Titan, Ganymede)
     MassCategory {
-        category: Category::Dwarf,
         range: (0.25, 0.45),
         weight: 2.0,
-    }, // BIG GUYS (Moon, Io, Callisto, Titan, Ganymede)
+    },
 ];
 
 pub fn generate() -> (Vec<BodySystem>, usize) {
@@ -271,12 +270,6 @@ fn generate_planet(
 
 fn max_moons(body_radius: f64) -> usize {
     (8.0 * (1.0 - (-body_radius / 5.0).exp())).round() as usize
-}
-
-fn has_habitable(planets: &[BodySystem]) -> bool {
-    planets.iter().any(|p| {
-        p.planet.0.habitable() && p.planet.0.category == Category::EarthLike && !p.moons.is_empty()
-    })
 }
 
 fn has_planet(planets: &[BodySystem], categories: &[Category], thresh: usize) -> bool {

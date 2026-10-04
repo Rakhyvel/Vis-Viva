@@ -4,7 +4,7 @@ use nalgebra_glm::{quat_angle_axis, quat_rotate_vec3, vec3, DVec3};
 
 use crate::astro::{
     epoch::{EphemerisTime, ET_PER_SECOND},
-    stumpff::{stumpff_c, stumpff_s},
+    stumpff::stumpff_c2_c3,
     units::{SECONDS_PER_HOUR, SECONDS_PER_YEAR},
 };
 
@@ -115,8 +115,7 @@ impl State {
             let chi2 = chi * chi;
             let z = alpha * chi2;
 
-            let c = stumpff_c(z);
-            let s = stumpff_s(z);
+            let (c, s) = stumpff_c2_c3(z);
 
             // how initial radial motion affects dt
             let r0_vr0_over_sqrtmu = r0_mag * vr0 / mu.sqrt();
@@ -174,8 +173,7 @@ impl State {
         let chi2 = chi * chi;
 
         let z = alpha * chi2;
-        let c = stumpff_c(z);
-        let s = stumpff_s(z);
+        let (c, s) = stumpff_c2_c3(z);
 
         // find lagrange f and g coeffs
         let f = 1.0 - (chi2 / r0_mag) * c;
