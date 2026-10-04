@@ -1,9 +1,9 @@
 use nalgebra_glm::DVec3;
 
 use crate::astro::{
-    departure::{best_branch, SweepWindow},
     epoch::EphemerisTime,
     lambert::lambert,
+    porkchop::{best_branch, SweepWindow},
     porkchop::{Cell, Porkchop},
     state::State,
     units::{G, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},

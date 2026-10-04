@@ -3,7 +3,6 @@ use std::f64::consts::PI;
 use nalgebra_glm::DVec3;
 
 use crate::astro::stumpff::stumpff_c2_c3;
-use crate::astro::{epoch::EphemerisTime, state::State};
 
 const LAMBERT_EPSILON: f64 = 1e-4; // General epsilon
 
@@ -45,50 +44,34 @@ pub fn lambert(
     let mut phi = 0.0;
     let mut c2 = 0.5_f64;
     let mut c3 = 1.0_f64 / 6.0;
-    let mut cur_tof;
     let mut y = 0.0;
     let mut converged = false;
     for _ in 0..1000 {
         y = r1_mag + r2_mag + a * (phi * c3 - 1.0) / c2.sqrt();
 
         if y < 0.0 {
-            // short way need larger phi, long way needs smaller
-            let dir = -a.signum() * 0.1;
-            for _ in 0..500 {
-                phi += dir;
-                let (nc2, nc3) = stumpff_c2_c3(phi);
-                y = r1_mag + r2_mag + a * (phi * nc3 - 1.0) / nc2.sqrt();
-                if y >= 0.0 {
-                    c2 = nc2;
-                    c3 = nc3;
-                    break;
-                }
-            }
-            if y < 0.0 {
-                return None;
-            }
-            // keep the bisection out of the region we just escaped
+            // no transfer has y < 0
             if a > 0.0 {
+                phi_lower = phi;
+            } else {
+                phi_upper = phi;
+            }
+        } else {
+            let cur_tof = ((y / c2).sqrt().powi(3) * c3 + a * y.sqrt()) / mu.sqrt();
+
+            if (cur_tof - tof).abs() < tol {
+                converged = true;
+                break;
+            }
+
+            if cur_tof < tof {
                 phi_lower = phi;
             } else {
                 phi_upper = phi;
             }
         }
 
-        cur_tof = ((y / c2).sqrt().powi(3) * c3 + a * y.sqrt()) / mu.sqrt();
-
-        if (cur_tof - tof).abs() < tol {
-            converged = true;
-            break;
-        }
-
-        if cur_tof < tof {
-            phi_lower = phi;
-        } else {
-            phi_upper = phi;
-        }
         phi = (phi_upper + phi_lower) / 2.0;
-
         (c2, c3) = stumpff_c2_c3(phi);
     }
 
@@ -106,38 +89,62 @@ pub fn lambert(
     Some((v1, v2))
 }
 
-#[test]
-fn test_lambert_recovers_velocity() {
-    let mu = 1.0;
-    let r = 2.0;
-    let init_state = State {
-        r: DVec3::new(r, 0.0, 0.0),
-        v: DVec3::new(0.0, (mu / r).sqrt(), 0.0),
-        t: EphemerisTime::new(0),
+#[cfg(test)]
+mod tests {
+    use nalgebra_glm::DVec3;
+
+    use crate::astro::{
+        epoch::EphemerisTime,
+        lambert::{lambert, TransferKind},
+        state::State,
     };
 
-    // Use a quarter period so r1 and r2 are 90 degrees apart
-    let period = 2.0 * PI * (r.powi(3) / mu).sqrt();
-    let departure_et = EphemerisTime::new(0);
-    let arrival_et = EphemerisTime::from_years(period / 4.0);
-    let tof = (arrival_et - departure_et).as_years();
+    #[test]
+    fn recovers_the_orbit_between_two_points() {
+        const MU: f64 = 3.0;
+        let t0 = EphemerisTime::epoch();
+        let ellipse = State::from_kepler(2.0, 0.3, 0.4, 0.5, 0.6, 0.4, t0, MU);
+        let hyperbola = State::from_kepler(-1.0, 1.8, 0.4, 0.5, 0.6, -0.5, t0, MU);
+        // the ellipse's period is ~10.3 years, under half an orbit takes the short way, over half the long way
+        let cases = [
+            (ellipse, 2.5),
+            (ellipse, 7.2),
+            (ellipse, 9.7),
+            // fast transfers need hyperbolic arcs, including a ~2 degree hop
+            (hyperbola, 0.01),
+            (hyperbola, 0.3),
+            (hyperbola, 3.0),
+            (hyperbola, 100.0),
+        ];
+        for (start, tof) in cases {
+            let end = start
+                .propagate(t0 + EphemerisTime::from_years(tof), MU)
+                .unwrap();
+            let short = start.r.cross(&end.r).dot(&start.angular_momentum()) > 0.0;
+            let kind = if short {
+                TransferKind::Short
+            } else {
+                TransferKind::Long
+            };
 
-    let depart_state = init_state.propagate(departure_et, mu).unwrap();
-    let arrival_state = init_state.propagate(arrival_et, mu).unwrap();
+            let (v1, v2) = lambert(start.r, end.r, tof, MU, kind)
+                .unwrap_or_else(|| panic!("no transfer found for tof {tof}"));
 
-    let Some((v1, _)) = lambert(
-        depart_state.r,
-        arrival_state.r,
-        tof,
-        mu,
-        TransferKind::Short,
-    ) else {
-        panic!("lambert didn't find a solution")
-    };
+            let err1 = (v1 - start.v).norm() / start.v.norm();
+            let err2 = (v2 - end.v).norm() / end.v.norm();
+            assert!(
+                err1 < 1e-6 && err2 < 1e-6,
+                "tof {tof}: velocity errors {err1:e}, {err2:e}"
+            );
+        }
+    }
 
-    let err = (v1 - depart_state.v).norm();
-    println!("lambert v: {:?}", v1);
-    println!("true    v: {:?}", depart_state.v);
-    println!("error:     {err:.2e}");
-    assert!(err < 1e-6, "lambert velocity error too large: {err}");
+    #[test]
+    fn opposite_points_have_no_unique_transfer() {
+        // 180 degrees apart, every plane through both points works equally well
+        let r1 = DVec3::new(1.5, 0.2, 0.1);
+        let r2 = -2.0 * r1;
+        assert!(lambert(r1, r2, 1.0, 3.0, TransferKind::Short).is_none());
+        assert!(lambert(r1, r2, 1.0, 3.0, TransferKind::Long).is_none());
+    }
 }

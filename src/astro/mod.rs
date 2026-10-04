@@ -1,4 +1,3 @@
-pub(crate) mod departure;
 pub(crate) mod epoch;
 pub(crate) mod escape;
 pub(crate) mod lambert;

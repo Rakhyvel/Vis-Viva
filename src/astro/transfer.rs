@@ -1,13 +1,13 @@
 use nalgebra_glm::DVec3;
 
 use crate::astro::{
-    departure::{best_branch, SweepWindow},
     epoch::EphemerisTime,
     lambert::{lambert, TransferKind},
     maneuver::{
         capture_at_periapsis_dv, circularization, find_periapsis, find_soi_entry,
         get_grandparent_state, impact_parameter, sphere_of_influence,
     },
+    porkchop::{best_branch, SweepWindow},
     porkchop::{Cell, Porkchop},
     state::State,
     units::{G, METERS_PER_SECOND_PER_EARTH_RADII_PER_YEAR},
@@ -61,7 +61,6 @@ pub fn transfer_porkchop(
                 let (v1, v2, aim) = aim_for_periapsis(
                     craft.r,
                     target,
-                    target_body_radius,
                     tof,
                     mu,
                     target_mu,
@@ -172,7 +171,6 @@ pub fn flyby_porkchop(
                 let (v1, _, _) = aim_for_periapsis(
                     craft.r,
                     target,
-                    target_body_radius,
                     tof,
                     mu,
                     target_mu,
@@ -234,7 +232,6 @@ pub fn plan_flyby_at(
 fn aim_for_periapsis(
     r_craft: DVec3,
     target: State,
-    target_body_radius: f64,
     tof: f64,
     mu: f64,
     target_mu: f64,
