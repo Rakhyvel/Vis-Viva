@@ -674,7 +674,7 @@ Sarin
 Segin
 Aldu
 Natsi
-Sarvvis
+Sarvis
 Shama
 Ceibo
 Nenque
@@ -744,6 +744,7 @@ Pater
 Egeria
 Empanda
 Epona
+Evander
 Falacer
 Fama
 Fascinus
