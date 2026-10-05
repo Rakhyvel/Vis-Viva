@@ -14,6 +14,7 @@ use crate::{
     container,
     generation::new_game::{new_game, NewGame},
     hud::{
+        emergency::{emergency_lines, EmergencyBanner},
         fabricator::{FabricatorAction, FabricatorUi},
         footer::{Footer, FooterView, TurnMessages},
         game_over::GameOverUi,
@@ -67,6 +68,7 @@ pub struct Gameplay {
     maneuver_ui: ManeuverModal,
     transfer_ui: TransferUi,
     game_over_ui: GameOverUi,
+    emergency_banner: EmergencyBanner,
 
     /// Buttons in the side panel are only clickable while paused
     controls_enabled: Rc<Cell<bool>>,
@@ -207,6 +209,8 @@ impl Scene for Gameplay {
         let marks = timeline::build_marks(&self.sim);
         self.footer.set_marks(marks);
         self.sync_panel(app);
+        self.emergency_banner
+            .sync(app, emergency_lines(self.sim.world(), now));
 
         // Delete anything we want deleted
         app.renderer.flush_deletion_queue();
@@ -226,6 +230,7 @@ impl Scene for Gameplay {
         // Draw GUI
         self.gui.render(app);
         self.footer.render(app);
+        self.emergency_banner.render(app);
         self.fabricator_ui.render(app);
         self.maneuver_ui.render(app);
         self.transfer_ui.render(app);
@@ -282,6 +287,7 @@ impl Gameplay {
             maneuver_ui: ManeuverModal::new(app),
             transfer_ui: TransferUi::new(),
             game_over_ui: GameOverUi::new(),
+            emergency_banner: EmergencyBanner::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
         };

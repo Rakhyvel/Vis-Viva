@@ -16,6 +16,7 @@ use crate::{
     },
 };
 
+pub mod emergency;
 pub mod fabricator;
 pub mod footer;
 pub mod format;

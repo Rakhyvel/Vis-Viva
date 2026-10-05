@@ -128,7 +128,10 @@ pub fn new_game(parts: &PartRegistry, tile_sets: &TileSets) -> NewGame {
         .insert(
             station,
             (
-                Station { num_crew: 2 },
+                Station {
+                    num_crew: 2,
+                    emergencies: vec![],
+                },
                 PortHost {
                     dock_gen: 0,
                     ports: 8,

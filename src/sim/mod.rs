@@ -10,7 +10,7 @@ use crate::{
         events::EventQueue,
         hierarchy::{docked_position_system, landed_system, orbit_system},
         industry::Factory,
-        life_support::Station,
+        life_support::{LifeSupportChange, Station},
         mission::Command,
         parts::PartRegistry,
         propulsion::Craft,
@@ -109,15 +109,10 @@ impl Sim {
                 industry::complete_due_jobs(&mut self.world, &self.parts, stop, &mut self.effects);
                 self.recompute_run_until();
             }
-
-            let now = self.clock.now();
-            if let Some((station, cause)) = life_support::crew_death(&mut self.world, now) {
-                resources::commit_station(&self.world, station, now);
-                self.world.get::<&mut Station>(station).unwrap().num_crew = 0;
-                self.clock.stop();
-                self.effects.push(SimEffect::CrewLost { station, cause });
-            }
         }
+
+        // Do every frame, even paused, so a transfer clears the emergency
+        self.apply_life_support();
 
         // Runs every frame, even while paused
         let now = self.clock.now();
@@ -132,11 +127,17 @@ impl Sim {
         let next_event = self.events.next_time();
         let next_limit = self.next_station_limit(now);
         let next_job_complete = self.next_job_completion(now);
+        let next_crew_deadline = self.next_crew_deadline();
 
-        let run_until = [next_event, next_limit, next_job_complete]
-            .into_iter()
-            .flatten()
-            .min();
+        let run_until = [
+            next_event,
+            next_limit,
+            next_job_complete,
+            next_crew_deadline,
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         self.clock.set_run_until(run_until);
     }
 
@@ -145,6 +146,59 @@ impl Sim {
             .query::<&Factory>()
             .iter()
             .filter_map(|(_, f)| f.current_job.as_ref()?.completion_et(f, now))
+            .min()
+    }
+
+    fn apply_life_support(&mut self) {
+        let now = self.clock.now();
+        for change in life_support::check_life_support(&self.world, now) {
+            match change {
+                LifeSupportChange::Emergency { station, emergency } => {
+                    // record the emergency on the station
+                    {
+                        let mut station = self
+                            .world
+                            .get::<&mut Station>(station)
+                            .expect("life support changes are only reported for stations");
+                        station.emergencies.push(emergency)
+                    }
+
+                    self.clock.stop();
+                    self.recompute_run_until();
+                    self.effects.push(SimEffect::Focus { entity: station });
+                }
+                LifeSupportChange::Recovered { station, cause } => {
+                    {
+                        let mut station = self
+                            .world
+                            .get::<&mut Station>(station)
+                            .expect("life support changes are only reported for stations");
+                        station.emergencies.retain(|e| e.cause != cause);
+                    }
+                    self.recompute_run_until();
+                }
+                LifeSupportChange::CrewLost { station, cause } => {
+                    resources::commit_station(&self.world, station, now); // crew stop consuming
+                    {
+                        let mut station = self
+                            .world
+                            .get::<&mut Station>(station)
+                            .expect("life support changes are only reported for stations");
+                        station.num_crew = 0;
+                        station.emergencies.clear();
+                    }
+                    self.clock.stop();
+                    self.effects.push(SimEffect::CrewLost { station, cause });
+                }
+            }
+        }
+    }
+
+    fn next_crew_deadline(&self) -> Option<EphemerisTime> {
+        self.world
+            .query::<&Station>()
+            .iter()
+            .filter_map(|(_, s)| s.most_pressing().map(|e| e.deadline))
             .min()
     }
 

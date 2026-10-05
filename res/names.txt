@@ -11,6 +11,7 @@ Pluto
 
 # Moons
 Luna
+Ancile
 Deimos
 Phobos
 Ganymede
@@ -88,7 +89,6 @@ Skathi
 Hyrrokkin
 Thymr
 Daphnis
-Tarqeq
 Mundilfari
 Narvi
 Suttungr

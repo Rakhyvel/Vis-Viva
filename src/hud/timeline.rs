@@ -15,6 +15,7 @@ use crate::{
         events::Event,
         hierarchy::Named,
         industry::{projected_completion, Factory},
+        life_support::Station,
         mission::BurnPurpose,
         propulsion::Craft,
         resources::next_reservoir_limits,
@@ -163,6 +164,18 @@ pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
                     detail: format!("{} Filled", resource.long_name()),
                 })
             }
+        }
+    }
+
+    // Add crew emergencies
+    for (_, (station, named)) in sim.world().query::<(&Station, &Named)>().iter() {
+        for e in &station.emergencies {
+            marks.push(TimelineMark {
+                t: e.deadline,
+                kind: MarkKind::Critical,
+                subject: named.name.clone(),
+                detail: String::from("Crew lost"),
+            });
         }
     }
 
