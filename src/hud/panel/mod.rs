@@ -38,8 +38,7 @@ mod modules;
 #[derive(Clone)]
 pub enum CommandMessages {
     OpenFabricator { fabricator_entity: Entity },
-    CancelQueuedFabricator { fabricator_entity: Entity },
-    CancelActiveFabricator { fabricator_entity: Entity },
+    CancelFabricator { fabricator_entity: Entity },
     ToggleFabricator { fabricator_entity: Entity },
     ToggleElectrolyzer { electrolyzer_entity: Entity },
     ToggleMiner { miner_entity: Entity },
@@ -156,11 +155,7 @@ fn build_crumbs(ctx: &PanelCtx, selected: Entity) -> Vec<Box<dyn Widget<CommandM
 pub fn panel_structure_bits(world: &World) -> u64 {
     let mut h = 0u64;
     for (e, f) in world.query::<&Factory>().iter() {
-        let s = match (&f.current_job, f.pending_job) {
-            (Some(_), _) => 2,
-            (None, Some(_)) => 1,
-            _ => 0,
-        };
+        let s = f.current_job.is_some() as u64;
         h ^= (e.id() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ s;
     }
     for (e, c) in world.query::<&Craft>().iter() {

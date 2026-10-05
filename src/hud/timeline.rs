@@ -14,11 +14,11 @@ use crate::{
         docking::{Docking, PortHost},
         events::Event,
         hierarchy::Named,
-        industry::{projected_completion, Factory},
+        industry::Factory,
         life_support::Station,
         mission::BurnPurpose,
         propulsion::Craft,
-        resources::next_reservoir_limits,
+        resources::{next_reservoir_limits, power_factor},
         Sim,
     },
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
@@ -113,14 +113,11 @@ pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
         .collect();
 
     // Add pending projected factory completion events
-    for (fab, (_, f)) in sim.world().query::<(&Docking, &Factory)>().iter() {
-        let (t, part_id) = if let Some(part_id) = f.pending_job {
-            (
-                projected_completion(sim.world(), fab, sim.parts(), sim.clock().now()).unwrap(),
-                part_id,
-            )
-        } else if let Some(current_job) = &f.current_job {
-            let Some(completion_et) = current_job.completion_et(f, sim.clock().now()) else {
+    for (fab, (docking, f)) in sim.world().query::<(&Docking, &Factory)>().iter() {
+        let (t, part_id) = if let Some(current_job) = &f.current_job {
+            let factor = power_factor(sim.world(), docking.host);
+            let Some(completion_et) = current_job.completion_et(f, factor, sim.clock().now())
+            else {
                 continue;
             };
             (completion_et, current_job.part_id)
@@ -146,9 +143,7 @@ pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
 
     // Add projected reservoir limit events, Depleted and Filled
     for (entity, (_, named)) in sim.world().query::<(&PortHost, &Named)>().iter() {
-        for (et, resource, rate) in
-            next_reservoir_limits(sim.world(), entity, sim.parts(), sim.clock().now(), true)
-        {
+        for (et, resource, rate) in next_reservoir_limits(sim.world(), entity, sim.clock().now()) {
             if rate < 0.0 {
                 marks.push(TimelineMark {
                     t: et,

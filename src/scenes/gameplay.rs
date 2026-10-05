@@ -120,11 +120,8 @@ impl Scene for Gameplay {
                             app,
                         );
                     }
-                    CommandMessages::CancelQueuedFabricator { fabricator_entity } => {
-                        self.sim.cancel_queued_build(fabricator_entity);
-                    }
-                    CommandMessages::CancelActiveFabricator { fabricator_entity } => {
-                        self.sim.cancel_active_build(fabricator_entity);
+                    CommandMessages::CancelFabricator { fabricator_entity } => {
+                        self.sim.cancel_build(fabricator_entity);
                     }
                     CommandMessages::ToggleFabricator { fabricator_entity } => {
                         self.sim.toggle_fabricator(fabricator_entity);

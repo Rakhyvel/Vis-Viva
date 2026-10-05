@@ -100,7 +100,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
   - [x] _start_ crew death on resource depletion, rather than immediate death, with big red text timer banner
     - [x] suffocation takes 3 mins
     - [x] dehydration takes 3 days
-    - [ ] need to cascade energy/water outages
+    - [x] need to cascade energy/water outages
     - [ ] spawn the game-over modal on full crew death, but don't close out game, just gray-out all actions
   - [ ] gradual resource transfers
     - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)

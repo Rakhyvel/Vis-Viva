@@ -11,7 +11,7 @@ use crate::{
     hud::stat_row,
     sim::{
         docking::Docking,
-        industry::{cost_status, CostKind, CostLine, Factory},
+        industry::{cost_status, CostKind, CostLine},
         parts::{PartDef, PartInventory, PartRegistry},
         resources::{station_resource_totals, Resource},
     },
@@ -96,23 +96,18 @@ impl FabricatorUi {
 
         let station = world.get::<&Docking>(fabricator).unwrap().host;
         let part_inventory = world.get::<&PartInventory>(station).unwrap();
-        let pending = world
-            .get::<&Factory>(fabricator)
-            .ok()
-            .and_then(|f| f.pending_job);
 
         let mut parts: Vec<&PartDef> = registry.all().filter(|p| p.fabricatable).collect();
         parts.sort_by(|a, b| a.name.cmp(&b.name));
 
         let mut cards: Vec<Box<dyn Widget<FabricatorMessages>>> = Vec::new();
         for part in parts {
-            let lines = cost_status(world, station, &part.cost, registry, t);
+            let lines = cost_status(world, station, &part.cost, t);
             cards.push(Box::new(self.build_card(
                 part,
                 &lines,
                 &part.byproducts,
                 registry,
-                pending,
                 app,
             )));
         }
@@ -222,7 +217,6 @@ impl FabricatorUi {
         lines: &[CostLine],
         byproducts: &[(Resource, f32)],
         registry: &PartRegistry,
-        pending: Option<u64>,
         app: &App,
     ) -> Container<FabricatorMessages> {
         let font = app.renderer.get_font_id_from_name("font").unwrap();
@@ -233,7 +227,6 @@ impl FabricatorUi {
 
         let id = part.id_hash();
         let affordable = lines.iter().all(|l| l.have >= l.need);
-        let queued = pending == Some(id);
 
         let text_color = if affordable {
             STYLE.text
@@ -320,9 +313,9 @@ impl FabricatorUi {
         }
 
         widgets.push(Box::new(
-            Button::text(vec2(280.0, 30.0), if queued { "QUEUED" } else { "BUILD" })
+            Button::text(vec2(280.0, 30.0), "BUILD")
                 .use_style(&STYLE)
-                .active(affordable && !queued)
+                .active(affordable)
                 .on_click(FabricatorMessages::Build(id)),
         ));
 

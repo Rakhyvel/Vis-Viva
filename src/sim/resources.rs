@@ -11,9 +11,8 @@ use crate::{
         bodies::Body,
         docking::Docking,
         hierarchy::{Landed, ParentBody},
-        industry::{pending_deduction, Factory},
+        industry::Factory,
         life_support::{Station, O2_PER_CREW_DAY, WATER_PER_CREW_DAY},
-        parts::PartRegistry,
     },
 };
 
@@ -80,7 +79,7 @@ pub fn station_resource_totals(
     r: Resource,
     t: EphemerisTime,
 ) -> (f32, f32) {
-    let flow = station_resource_amount_flow(world, station, r, false);
+    let flow = station_resource_amount_flow(world, station, r);
 
     let mut capacity = 0.0;
     let mut stores: Vec<&ResourceStore> = Vec::new();
@@ -112,7 +111,7 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
         .get::<&ResourceStore>(module)
         .expect("resource_store_amount is only called on stores");
 
-    let flow = station_resource_amount_flow(world, station, store.resource, false);
+    let flow = station_resource_amount_flow(world, station, store.resource);
 
     let mut capacity = 0.0;
     let mut q = world.query::<(&Docking, &ResourceStore)>();
@@ -128,24 +127,44 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
 }
 
 pub fn commit_station(world: &World, station: Entity, now: EphemerisTime) {
-    for r in Resource::ALL {
-        commit_resource_stores(world, station, *r, now);
-    }
-}
+    let stores: Vec<(Entity, f32)> = world
+        .query::<(&Docking, &ResourceStore)>()
+        .iter()
+        .filter(|(_, (docking, _))| docking.host == station)
+        .map(|(module, (_, _))| (module, resource_store_amount(world, module, now)))
+        .collect();
 
-pub fn commit_resource_stores(world: &World, station: Entity, r: Resource, now: EphemerisTime) {
-    for module in stores_of(world, station, r) {
-        let current = resource_store_amount(world, module, now);
-        let mut s = world
+    let factor = power_factor(world, station);
+    let jobs: Vec<(Entity, f32)> = world
+        .query::<(&Docking, &Factory)>()
+        .iter()
+        .filter(|(_, (docking, _))| docking.host == station)
+        .filter_map(|(fab, (_, f))| Some((fab, f.current_job.as_ref()?.energy_at(f, factor, now))))
+        .collect();
+
+    for (module, amount) in stores {
+        let mut store = world
             .get::<&mut ResourceStore>(module)
-            .expect("stores_of only returns ResourceStores entities");
-        s.amount = current;
-        s.amount_et = now;
+            .expect("collected from a ResourceStore query");
+        store.amount = amount;
+        store.amount_et = now;
+    }
+
+    for (fab, energy) in jobs {
+        let mut f = world
+            .get::<&mut Factory>(fab)
+            .expect("collected from a Factory query");
+        let job = f
+            .current_job
+            .as_mut()
+            .expect("collected because it had a job");
+        job.energy_done = energy;
+        job.energy_et = now;
     }
 }
 
 pub fn add_resource(world: &World, station: Entity, r: Resource, amount: f32, now: EphemerisTime) {
-    commit_resource_stores(world, station, r, now);
+    commit_station(world, station, now);
 
     let resource_stores = stores_of(world, station, r);
 
@@ -176,7 +195,7 @@ pub fn add_resource(world: &World, station: Entity, r: Resource, amount: f32, no
 }
 
 pub fn take_resource(world: &World, station: Entity, r: Resource, amount: f32, now: EphemerisTime) {
-    commit_resource_stores(world, station, r, now);
+    commit_station(world, station, now);
 
     let modules = stores_of(world, station, r);
 
@@ -244,18 +263,13 @@ pub fn stored_mass_kg(world: &World, host: Entity, t: EphemerisTime) -> f64 {
 pub fn next_reservoir_limits(
     world: &World,
     station: Entity,
-    registry: &PartRegistry,
     now: EphemerisTime,
-    projected: bool,
 ) -> Vec<(EphemerisTime, Resource, f32)> {
     let mut ts: Vec<(EphemerisTime, Resource, f32)> = Resource::ALL
         .iter()
         .filter_map(|r| {
-            let (mut total, capacity) = station_resource_totals(world, station, *r, now);
-            if projected {
-                total = (total - pending_deduction(world, station, registry, *r)).max(0.0)
-            }
-            let rate = station_resource_amount_flow(world, station, *r, projected);
+            let (total, capacity) = station_resource_totals(world, station, *r, now);
+            let rate = station_resource_amount_flow(world, station, *r);
 
             // Fix saturation, on either end, so we don't do more than one event for these
             let rate = if (total >= capacity && rate > 0.0) || (total <= 0.0 && rate < 0.0) {
@@ -315,12 +329,13 @@ impl Electrolyzer {
 }
 
 pub fn electrolyzer_kg_per_s(world: &World, station: Entity) -> f32 {
+    let f = power_factor(world, station);
     let (water, _) = committed_totals(world, station, Resource::Water);
 
     let mut kg_s = 0.0;
     for (_, (docking, el)) in world.query::<(&Docking, &Electrolyzer)>().iter() {
         if docking.host == station && el.enabled && water > 0.0 {
-            kg_s += el.power_watts / el.joules_per_kg_water
+            kg_s += el.power_watts / el.joules_per_kg_water * f
         }
     }
 
@@ -349,6 +364,7 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
     if world.get::<&Landed>(host).is_err() {
         return 0.0;
     }
+    let f = power_factor(world, host);
 
     let Ok(parent) = world.get::<&ParentBody>(host) else {
         return 0.0;
@@ -360,14 +376,14 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
     let mut kg_s = 0.0;
     for (_, (docking, m)) in world.query::<(&Docking, &Miner)>().iter() {
         if docking.host == host && m.enabled {
-            kg_s += m.kg_per_s * 0.4; // TODO: Take from body ice fraction
+            kg_s += m.kg_per_s * 0.4 * f; // TODO: Take from body ice fraction
         }
     }
     kg_s
 }
 
-/// Get the net power in Watts
-pub fn station_net_watts(world: &World, station: Entity) -> f32 {
+/// Watts the station's panels produce
+pub fn station_supply_watts(world: &World, station: Entity) -> f32 {
     let r_au = station_r_au(world, station);
 
     let mut w = 0.0;
@@ -379,26 +395,57 @@ pub fn station_net_watts(world: &World, station: Entity) -> f32 {
         }
     }
 
+    w
+}
+
+pub fn station_demand_watts(world: &World, station: Entity) -> f32 {
+    let mut w = 0.0;
+
     // Subtract consumers
     for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
         if docking.host == station && fab.current_job.is_some() && fab.enabled {
-            w -= fab.power_watts;
+            w += fab.power_watts;
         }
     }
     for (_, (docking, el)) in world.query::<(&Docking, &Electrolyzer)>().iter() {
         let running = el.is_running(world, docking.host);
         if docking.host == station && el.enabled && running {
-            w -= el.power_watts;
+            w += el.power_watts;
         }
     }
     for (_, (docking, miner)) in world.query::<(&Docking, &Miner)>().iter() {
         let running = miner.is_running(world, docking.host);
         if docking.host == station && running {
-            w -= miner.power_watts;
+            w += miner.power_watts;
         }
     }
 
     w
+}
+
+/// What fraction of the power consumers actually get
+pub fn power_factor(world: &World, station: Entity) -> f32 {
+    let (stored, _) = committed_totals(world, station, Resource::Energy);
+    let (supply, demand) = (
+        station_supply_watts(world, station),
+        station_demand_watts(world, station),
+    );
+
+    if stored > 0.0 || demand <= supply {
+        1.0
+    } else {
+        supply / demand
+    }
+}
+
+/// Get the net power in Watts
+pub fn station_net_watts(world: &World, station: Entity) -> f32 {
+    let (supply, demand) = (
+        station_supply_watts(world, station),
+        station_demand_watts(world, station),
+    );
+
+    supply - demand * power_factor(world, station)
 }
 
 pub fn station_r_au(world: &World, station: Entity) -> f64 {
@@ -409,12 +456,7 @@ pub fn station_r_au(world: &World, station: Entity) -> f64 {
 }
 
 /// Gets the total station-wide amount time derivative for a resource, in unit/sec
-pub fn station_resource_amount_flow(
-    world: &World,
-    host: Entity,
-    r: Resource,
-    projected: bool,
-) -> f32 {
+pub fn station_resource_amount_flow(world: &World, host: Entity, r: Resource) -> f32 {
     // Accumulate producers of a resource
     const H2_PER_H2O: f32 = 0.1119;
     const O2_PER_H2O: f32 = 0.8881;
@@ -428,21 +470,167 @@ pub fn station_resource_amount_flow(
         Resource::Water => crew_water + -el + miner_kg_per_s(world, host),
         Resource::Oxygen => crew_o2 + el * O2_PER_H2O,
         Resource::Hydrogen => el * H2_PER_H2O,
-        Resource::Energy => {
-            let mut watts = station_net_watts(world, host);
-            if projected {
-                for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
-                    if docking.host == host
-                        && fab.current_job.is_none()
-                        && fab.pending_job.is_some()
-                    {
-                        watts -= fab.power_watts;
-                    }
-                }
-            }
-            watts
+        Resource::Energy => station_net_watts(world, host),
+    }
+}
+
+/// Builders for small worlds in the sim tests
+#[cfg(test)]
+pub(crate) mod test_world {
+    use nalgebra_glm::vec3;
+
+    use super::*;
+    use crate::sim::industry::FactoryJob;
+
+    /// A host 1 AU from the sun, so its panels make exactly their rated power
+    pub fn host() -> (World, Entity) {
+        let mut world = World::new();
+        let host = world.spawn((WorldPosition {
+            pos: vec3(EARTH_RADII_PER_AU, 0.0, 0.0),
+        },));
+        (world, host)
+    }
+
+    fn docked(host: Entity) -> Docking {
+        Docking {
+            host,
+            host_port: 0,
+            own_port: 0,
         }
     }
 
-    // TODO: Decumulate consumers of a resource
+    /// One store per resource keeps the capacity shares trivial
+    pub fn store(world: &mut World, host: Entity, resource: Resource, amount: f32) -> Entity {
+        world.spawn((
+            docked(host),
+            ResourceStore {
+                resource,
+                amount,
+                capacity: 1e9,
+                amount_et: EphemerisTime::epoch(),
+            },
+        ))
+    }
+
+    pub fn panel(world: &mut World, host: Entity, watts: f32) -> Entity {
+        world.spawn((docked(host), SolarPanel { rated_w: watts }))
+    }
+
+    /// Splits 1 kg of water per kJ, so `watts` W gets through watts / 1000 kg/s
+    pub fn electrolyzer(world: &mut World, host: Entity, watts: f32) -> Entity {
+        world.spawn((
+            docked(host),
+            Electrolyzer {
+                enabled: true,
+                power_watts: watts,
+                joules_per_kg_water: 1000.0,
+            },
+        ))
+    }
+
+    /// Running a 1 MJ job, started at the epoch
+    pub fn factory(world: &mut World, host: Entity, watts: f32) -> Entity {
+        world.spawn((
+            docked(host),
+            Factory {
+                current_job: Some(FactoryJob {
+                    part_id: 0,
+                    energy_total: 1e6,
+                    energy_done: 0.0,
+                    energy_et: EphemerisTime::epoch(),
+                    started_et: EphemerisTime::epoch(),
+                }),
+                power_watts: watts,
+                enabled: true,
+                reserved_port: None,
+            },
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{test_world::*, *};
+
+    #[test]
+    fn starved_consumers_share_the_panels_output() {
+        let (mut world, host) = host();
+        panel(&mut world, host, 100.0);
+        electrolyzer(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 0.0);
+        store(&mut world, host, Resource::Water, 100.0);
+
+        assert_eq!(power_factor(&world, host), 0.25);
+        // the battery neither charges nor drains
+        assert_eq!(station_net_watts(&world, host), 0.0);
+        // 400 W would split 0.4 kg/s; it gets a quarter of that
+        let kg_s = electrolyzer_kg_per_s(&world, host);
+        assert!((kg_s - 0.1).abs() < 1e-6, "{kg_s} kg/s");
+    }
+
+    #[test]
+    fn a_charged_battery_runs_everything_at_full_power() {
+        let (mut world, host) = host();
+        panel(&mut world, host, 100.0);
+        electrolyzer(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 1000.0);
+        store(&mut world, host, Resource::Water, 100.0);
+
+        assert_eq!(power_factor(&world, host), 1.0);
+        assert_eq!(station_net_watts(&world, host), -300.0);
+    }
+
+    #[test]
+    fn panels_that_cover_demand_need_no_battery() {
+        let (mut world, host) = host();
+        panel(&mut world, host, 500.0);
+        electrolyzer(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 0.0);
+        store(&mut world, host, Resource::Water, 100.0);
+
+        assert_eq!(power_factor(&world, host), 1.0);
+        assert_eq!(station_net_watts(&world, host), 100.0);
+    }
+
+    #[test]
+    fn commit_credits_production_up_to_the_water_running_out() {
+        // no panels, but a big battery: full power, splitting 1 kg/s, so the water lasts 10 s
+        let (mut world, host) = host();
+        electrolyzer(&mut world, host, 1000.0);
+        store(&mut world, host, Resource::Energy, 1e6);
+        store(&mut world, host, Resource::Water, 10.0);
+        let o2 = store(&mut world, host, Resource::Oxygen, 0.0);
+        let h2 = store(&mut world, host, Resource::Hydrogen, 0.0);
+
+        let empty = EphemerisTime::epoch() + EphemerisTime::from_secs(10.0);
+        commit_station(&world, host, empty);
+
+        // all 10 kg was split, even though water commits before oxygen and hydrogen
+        let o2_kg = resource_store_amount(&world, o2, empty);
+        let h2_kg = resource_store_amount(&world, h2, empty);
+        assert!((o2_kg - 8.881).abs() < 1e-3, "{o2_kg} kg O2");
+        assert!((h2_kg - 1.119).abs() < 1e-3, "{h2_kg} kg H2");
+        // and with no water left, it stops
+        assert_eq!(electrolyzer_kg_per_s(&world, host), 0.0);
+    }
+
+    #[test]
+    fn commit_credits_full_power_up_to_the_battery_running_out() {
+        // 100 W of panels under a 400 W electrolyzer drains 300 W, so the 3 kJ battery lasts 10 s
+        let (mut world, host) = host();
+        panel(&mut world, host, 100.0);
+        electrolyzer(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 3000.0);
+        store(&mut world, host, Resource::Water, 100.0);
+        let o2 = store(&mut world, host, Resource::Oxygen, 0.0);
+
+        let empty = EphemerisTime::epoch() + EphemerisTime::from_secs(10.0);
+        commit_station(&world, host, empty);
+
+        // 10 s at the full 0.4 kg/s: committing energy first mustn't throttle it after the fact
+        let o2_kg = resource_store_amount(&world, o2, empty);
+        assert!((o2_kg - 0.4 * 10.0 * 0.8881).abs() < 1e-3, "{o2_kg} kg O2");
+        // from here on it's starved
+        assert_eq!(power_factor(&world, host), 0.25);
+    }
 }

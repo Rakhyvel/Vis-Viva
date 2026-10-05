@@ -103,6 +103,10 @@ impl Sim {
             if let Some(stop) = self.clock.advance(real_dt) {
                 self.effects.push(SimEffect::Stopped { at: stop });
 
+                for (host, _) in self.world.query::<&PortHost>().iter() {
+                    resources::commit_station(&self.world, host, stop);
+                }
+
                 for event in self.events.pop_due(stop) {
                     events::apply(&mut self.world, stop, event, &mut self.effects);
                 }
@@ -143,9 +147,12 @@ impl Sim {
 
     fn next_job_completion(&self, now: EphemerisTime) -> Option<EphemerisTime> {
         self.world
-            .query::<&Factory>()
+            .query::<(&Docking, &Factory)>()
             .iter()
-            .filter_map(|(_, f)| f.current_job.as_ref()?.completion_et(f, now))
+            .filter_map(|(_, (docking, f))| {
+                let factor = resources::power_factor(&self.world, docking.host);
+                f.current_job.as_ref()?.completion_et(f, factor, now)
+            })
             .min()
     }
 
@@ -205,20 +212,13 @@ impl Sim {
     fn next_station_limit(&self, now: EphemerisTime) -> Option<EphemerisTime> {
         let mut limits = vec![];
         for (entity, _) in self.world.query::<&PortHost>().iter() {
-            limits.extend(next_reservoir_limits(
-                &self.world,
-                entity,
-                &self.parts,
-                now,
-                true,
-            ));
+            limits.extend(next_reservoir_limits(&self.world, entity, now));
         }
 
         limits.into_iter().map(|(et, _, _)| et).min()
     }
 
     pub fn toggle_play(&mut self) {
-        industry::commit_pending_builds(&self.world, &self.parts, self.clock.now());
         self.recompute_run_until();
         self.clock.set_paused(!self.clock.paused());
     }
@@ -241,22 +241,24 @@ impl Sim {
     }
 
     pub fn queue_build(&mut self, fab: Entity, part_id: u64) {
-        industry::queue_build(&self.world, &self.parts, fab, part_id);
+        industry::start_build(&self.world, &self.parts, fab, part_id, self.clock.now());
+        self.recompute_run_until();
     }
 
-    pub fn cancel_queued_build(&mut self, fab: Entity) {
-        self.world.get::<&mut Factory>(fab).unwrap().cancel_queued();
-    }
-
-    pub fn cancel_active_build(&mut self, fab: Entity) {
-        self.commit(self.host_of(fab)); // the job's power draw stops
-        self.world.get::<&mut Factory>(fab).unwrap().cancel_active();
+    pub fn cancel_build(&mut self, fab: Entity) {
+        industry::cancel_build(&self.world, &self.parts, fab, self.clock.now());
+        self.recompute_run_until();
     }
 
     pub fn toggle_fabricator(&mut self, fab: Entity) {
-        self.commit(self.host_of(fab));
+        let host = self.host_of(fab);
+        self.commit(host);
+        let factor = resources::power_factor(&self.world, host);
         let now = self.clock.now();
-        self.world.get::<&mut Factory>(fab).unwrap().toggle(now);
+        self.world
+            .get::<&mut Factory>(fab)
+            .unwrap()
+            .toggle(factor, now);
     }
 
     pub fn toggle_electrolyzer(&mut self, e: Entity) {

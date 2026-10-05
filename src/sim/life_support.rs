@@ -53,7 +53,7 @@ const CRITICAL: [Resource; 2] = [Resource::Oxygen, Resource::Water];
 
 fn is_depleted(world: &World, station: Entity, r: Resource, now: EphemerisTime) -> bool {
     let (stored, _) = station_resource_totals(world, station, r, now);
-    let flow = station_resource_amount_flow(world, station, r, false);
+    let flow = station_resource_amount_flow(world, station, r);
     // Under a second of supply counts as empty, so float rounding at the stop can't delay it
     flow < 0.0 && stored / -flow < 1.0
 }

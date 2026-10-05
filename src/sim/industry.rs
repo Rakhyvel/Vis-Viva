@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
+///! Fabrication
 use hecs::{Entity, World};
 
-///! Fabrication
 use crate::{
     astro::epoch::EphemerisTime,
     sim::{
@@ -11,8 +9,8 @@ use crate::{
         parts::{ModuleSpec, PartCost, PartDef, PartInventory, PartRegistry},
         propulsion::spawn_craft,
         resources::{
-            add_resource, commit_station, station_resource_totals, take_resource, Miner, Resource,
-            ResourceStore,
+            add_resource, commit_station, power_factor, station_resource_totals, take_resource,
+            Miner, Resource, ResourceStore,
         },
         SimEffect,
     },
@@ -20,7 +18,6 @@ use crate::{
 
 pub struct Factory {
     pub current_job: Option<FactoryJob>,
-    pub pending_job: Option<u64>,
     pub power_watts: f32,
     pub enabled: bool,
     /// Port on the host held for the craft we're building
@@ -33,29 +30,14 @@ pub struct FactoryJob {
     pub energy_total: f32,
     pub energy_done: f32,
     pub energy_et: EphemerisTime,
+    pub started_et: EphemerisTime,
 }
 
 impl Factory {
-    pub fn start_job(
-        &mut self,
-        part_id: u64,
-        current_et: EphemerisTime,
-        energy_total: f32,
-    ) -> Result<(), String> {
-        self.enabled = true;
-        self.current_job = Some(FactoryJob {
-            part_id,
-            energy_done: 0.0,
-            energy_total,
-            energy_et: current_et,
-        });
-        Ok(())
-    }
-
     /// Flip on/off, banking the energy done so far so the job's progress survives being off
-    pub fn toggle(&mut self, now: EphemerisTime) {
+    pub fn toggle(&mut self, factor: f32, now: EphemerisTime) {
         let enabled = self.enabled;
-        let power = self.power_watts;
+        let power = self.power_watts * factor;
         if let Some(job) = &mut self.current_job {
             if enabled {
                 let dt = (now - job.energy_et).as_secs() as f32;
@@ -65,38 +47,145 @@ impl Factory {
         }
         self.enabled = !enabled
     }
+}
 
-    pub fn cancel_queued(&mut self) {
-        self.pending_job = None;
-        self.reserved_port = None
+pub fn start_build(
+    world: &World,
+    parts: &PartRegistry,
+    fab: Entity,
+    part_id: u64,
+    now: EphemerisTime,
+) {
+    let host = world
+        .get::<&Docking>(fab)
+        .expect("factories are always docked to a host")
+        .host;
+    let cost = &parts
+        .get(part_id)
+        .expect("the fabricator only offers known parts")
+        .cost;
+
+    // Commit, since we change the power draw on the station
+    commit_station(world, host, now);
+
+    // Take the parts from the inventory
+    {
+        let mut inv = world
+            .get::<&mut PartInventory>(host)
+            .expect("fabricator hosts have a part inventory");
+        for (id, n) in &cost.parts {
+            for _ in 0..*n {
+                inv.take(*id)
+                    .expect("the fabricator only offers affordable builds")
+            }
+        }
     }
 
-    pub fn cancel_active(&mut self) {
-        self.current_job = None;
-        self.reserved_port = None
+    // Take the resources from the station
+    for (r, amount) in &cost.resources {
+        take_resource(world, host, *r, *amount, now);
+    }
+
+    // Reserve the port
+    let reserved_port = (cost.ports_required > 0)
+        .then(|| next_free_port(world, host))
+        .flatten();
+
+    // Update the factory to start building
+    {
+        let mut f = world
+            .get::<&mut Factory>(fab)
+            .expect("start_build is only called on factories");
+        f.enabled = true;
+        f.reserved_port = reserved_port;
+        f.current_job = Some(FactoryJob {
+            part_id,
+            energy_total: cost.energy_joules,
+            energy_done: 0.0,
+            energy_et: now,
+            started_et: now,
+        })
+    }
+
+    // update for module ui
+    world
+        .get::<&mut PortHost>(host)
+        .expect("fabricator hosts are port hosts")
+        .dock_gen += 1;
+}
+
+pub fn cancel_build(world: &World, parts: &PartRegistry, fab: Entity, now: EphemerisTime) {
+    let host = world
+        .get::<&Docking>(fab)
+        .expect("factories are always docked to a host")
+        .host;
+
+    // the factory stops drawing power
+    commit_station(world, host, now);
+
+    // swap the job
+    let job = {
+        let mut f = world
+            .get::<&mut Factory>(fab)
+            .expect("cancel_build is only called on factories");
+        f.reserved_port = None;
+        f.current_job.take()
+    };
+
+    let Some(job) = job else { return };
+
+    // Give a full refund if no time has passed
+    if job.started_et == now {
+        let cost = &parts
+            .get(job.part_id)
+            .expect("jobs are for known parts")
+            .cost;
+        let mut inv = world
+            .get::<&mut PartInventory>(host)
+            .expect("fabricator hosts have a part inventory");
+        for (id, n) in &cost.parts {
+            inv.add(*id, *n);
+        }
+        drop(inv);
+        for (r, amount) in &cost.resources {
+            add_resource(world, host, *r, *amount, now);
+        }
     }
 }
 
 impl FactoryJob {
-    pub fn energy_at(&self, fab: &Factory, t: EphemerisTime) -> f32 {
+    pub fn energy_at(&self, fab: &Factory, factor: f32, t: EphemerisTime) -> f32 {
         if !fab.enabled {
             return self.energy_done;
         }
         let dt = (t - self.energy_et).as_secs() as f32;
-        (self.energy_done + fab.power_watts * dt).min(self.energy_total)
+        (self.energy_done + fab.power_watts * factor * dt).min(self.energy_total)
     }
 
-    pub fn progress(&self, fab: &Factory, current_et: EphemerisTime) -> f64 {
-        (self.energy_at(fab, current_et) / self.energy_total) as f64
+    pub fn progress(&self, fab: &Factory, factor: f32, current_et: EphemerisTime) -> f64 {
+        (self.energy_at(fab, factor, current_et) / self.energy_total) as f64
     }
 
-    pub fn completion_et(&self, fab: &Factory, t: EphemerisTime) -> Option<EphemerisTime> {
-        if !fab.enabled {
+    pub fn completion_et(
+        &self,
+        fab: &Factory,
+        factor: f32,
+        t: EphemerisTime,
+    ) -> Option<EphemerisTime> {
+        if !fab.enabled || factor == 0.0 {
             return None;
         }
-        let remaining = self.energy_total - self.energy_at(fab, t);
-        Some(t + EphemerisTime::from_secs((remaining / fab.power_watts) as f64))
+        let remaining = self.energy_total - self.energy_at(fab, factor, t);
+        Some(t + EphemerisTime::from_secs((remaining / (fab.power_watts * factor)) as f64))
     }
+}
+
+pub fn factory_power_factor(world: &World, fab: Entity) -> f32 {
+    let host = world
+        .get::<&Docking>(fab)
+        .expect("factories are always docked to a host")
+        .host;
+    power_factor(world, host)
 }
 
 pub enum CostKind {
@@ -115,32 +204,25 @@ pub fn cost_status(
     world: &World,
     station: Entity,
     cost: &PartCost,
-    registry: &PartRegistry,
     t: EphemerisTime,
 ) -> Vec<CostLine> {
     let inventory = world
         .get::<&PartInventory>(station)
         .expect("fabricator hosts have a part inventory");
 
-    let (parts, resources) = station_reserved(world, station, registry);
-
-    let mut line = vec![];
+    let mut lines = vec![];
 
     for (id, need) in &cost.parts {
-        let reserved = parts.get(id).copied().unwrap_or(0);
-        let have = inventory.quantity(*id).saturating_sub(reserved);
-        line.push(CostLine {
+        lines.push(CostLine {
             kind: CostKind::Part(*id),
             need: *need as f32,
-            have: have as f32,
-        })
+            have: inventory.quantity(*id) as f32,
+        });
     }
 
     for (r, need) in &cost.resources {
-        let (raw_have, _) = station_resource_totals(world, station, *r, t);
-        let reserved = resources.get(r).copied().unwrap_or(0.0);
-        let have = raw_have - reserved;
-        line.push(CostLine {
+        let (have, _) = station_resource_totals(world, station, *r, t);
+        lines.push(CostLine {
             kind: CostKind::Resource(*r),
             need: *need,
             have,
@@ -148,120 +230,14 @@ pub fn cost_status(
     }
 
     if cost.ports_required > 0 {
-        line.push(CostLine {
+        lines.push(CostLine {
             kind: CostKind::Port,
             need: cost.ports_required as f32,
             have: free_ports(world, station) as f32,
         });
     }
 
-    line
-}
-
-// TODO: Merge station_reserved
-pub fn pending_deduction(
-    world: &World,
-    station: Entity,
-    registry: &PartRegistry,
-    r: Resource,
-) -> f32 {
-    let mut sum = 0.0;
-    for (_, (docking, f)) in world.query::<(&Docking, &Factory)>().iter() {
-        if docking.host != station {
-            continue;
-        }
-        let Some(id) = f.pending_job else { continue };
-        let Some(def) = registry.get(id) else {
-            continue;
-        };
-        for (res, amt) in &def.cost.resources {
-            if *res == r {
-                sum += *amt
-            }
-        }
-    }
-    sum
-}
-
-pub fn station_reserved(
-    world: &World,
-    station: Entity,
-    registry: &PartRegistry,
-) -> (HashMap<u64, u32>, HashMap<Resource, f32>) {
-    let mut parts = HashMap::new();
-    let mut resources = HashMap::new();
-    for (_, (docking, fab)) in world.query::<(&Docking, &Factory)>().iter() {
-        if docking.host != station {
-            continue;
-        }
-        let Some(id) = fab.pending_job else {
-            continue;
-        };
-        let Some(def) = registry.get(id) else {
-            continue;
-        };
-        for (part_id, n) in &def.cost.parts {
-            *parts.entry(*part_id).or_insert(0) += n
-        }
-        for (r, amt) in &def.cost.resources {
-            *resources.entry(*r).or_insert(0.0) += amt;
-        }
-    }
-    (parts, resources)
-}
-
-pub fn projected_completion(
-    world: &World,
-    fab: Entity,
-    registry: &PartRegistry,
-    now: EphemerisTime,
-) -> Option<EphemerisTime> {
-    let f = world.get::<&Factory>(fab).ok()?;
-    let def = registry.get(f.pending_job?)?;
-    let secs = def.cost.energy_joules / f.power_watts;
-    Some(now + EphemerisTime::from_secs(secs as f64))
-}
-
-pub fn commit_pending_builds(world: &World, parts: &PartRegistry, now: EphemerisTime) {
-    // Collect the factories
-    let pending: Vec<(Entity, u64)> = world
-        .query::<&Factory>()
-        .iter()
-        .filter_map(|(e, f)| f.pending_job.map(|id| (e, id)))
-        .collect();
-
-    for (fab, part_id) in pending {
-        let station = world.get::<&Docking>(fab).unwrap().host;
-        let cost = &parts.get(part_id).unwrap().cost;
-
-        // Commit the parts subtraction
-        {
-            let mut inv = world.get::<&mut PartInventory>(station).unwrap();
-            for (id, n) in &cost.parts {
-                for _ in 0..*n {
-                    inv.take(*id)
-                        .expect("queue_build ony accepts affordable builds");
-                }
-            }
-        }
-
-        // Commit the resources subtraction
-        for (r, amount) in &cost.resources {
-            take_resource(world, station, *r, *amount, now);
-        }
-
-        // Commit at the old rate, before the job changes it.
-        commit_station(world, station, now);
-
-        {
-            let mut f = world.get::<&mut Factory>(fab).unwrap();
-            f.start_job(part_id, now, cost.energy_joules).unwrap();
-            f.pending_job = None;
-        }
-
-        // update for module ui
-        world.get::<&mut PortHost>(station).unwrap().dock_gen += 1;
-    }
+    lines
 }
 
 pub fn complete_due_jobs(
@@ -271,11 +247,13 @@ pub fn complete_due_jobs(
     effects: &mut Vec<SimEffect>,
 ) {
     let done: Vec<(Entity, u64)> = world
-        .query::<&Factory>()
+        .query::<(&Docking, &Factory)>()
         .iter()
-        .filter_map(|(e, f)| {
+        .filter_map(|(e, (docking, f))| {
             let job = f.current_job.as_ref()?;
-            (job.energy_at(f, now) >= job.energy_total - f.power_watts).then_some((e, job.part_id))
+            let factor = power_factor(world, docking.host);
+            (job.energy_at(f, factor, now) >= job.energy_total - f.power_watts)
+                .then_some((e, job.part_id))
         })
         .collect();
 
@@ -393,24 +371,10 @@ fn deliver_craft(
         .expect("part loading guarantees craft have a spare port for docking");
 }
 
-/// Queue `part_id` on a fabricator. It starts, and gets paid for, at the next Play
-pub fn queue_build(world: &World, parts: &PartRegistry, fab: Entity, part_id: u64) {
-    let host = world.get::<&Docking>(fab).unwrap().host;
-    let ports = parts.get(part_id).map_or(0, |d| d.cost.ports_required);
-    let reserved_port = if ports > 0 {
-        next_free_port(world, host)
-    } else {
-        None
-    };
-
-    let mut factory = world.get::<&mut Factory>(fab).unwrap();
-    factory.pending_job = Some(part_id);
-    factory.reserved_port = reserved_port
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sim::resources::{commit_station, test_world::*, Electrolyzer, Resource};
 
     #[test]
     fn toggling_off_banks_progress() {
@@ -421,20 +385,108 @@ mod tests {
                 energy_total: 1000.0,
                 energy_done: 0.0,
                 energy_et: t0,
+                started_et: t0,
             }),
-            pending_job: None,
             power_watts: 10.0,
             enabled: true,
             reserved_port: None,
         };
 
         let t1 = t0 + EphemerisTime::from_secs(30.0);
-        fab.toggle(t1);
+        fab.toggle(1.0, t1);
 
         assert!(!fab.enabled);
         // 30 s at 10 W was banked, and nothing accrues while it's off
         let later = t1 + EphemerisTime::from_secs(100.0);
         let job = fab.current_job.as_ref().unwrap();
-        assert_eq!(job.energy_at(&fab, later), 300.0);
+        assert_eq!(job.energy_at(&fab, 1.0, later), 300.0);
+    }
+
+    #[test]
+    fn the_power_factor_scales_job_progress() {
+        let t0 = EphemerisTime::epoch();
+        let fab = Factory {
+            current_job: Some(FactoryJob {
+                part_id: 0,
+                energy_total: 1000.0,
+                energy_done: 0.0,
+                energy_et: t0,
+                started_et: t0,
+            }),
+            power_watts: 10.0,
+            enabled: true,
+            reserved_port: None,
+        };
+        let job = fab.current_job.as_ref().unwrap();
+
+        // half power: 30 s banks 150 J, and the 1 kJ job takes 200 s instead of 100
+        assert_eq!(
+            job.energy_at(&fab, 0.5, t0 + EphemerisTime::from_secs(30.0)),
+            150.0
+        );
+        assert_eq!(
+            job.completion_et(&fab, 0.5, t0),
+            Some(t0 + EphemerisTime::from_secs(200.0))
+        );
+        // no power: it never finishes
+        assert_eq!(job.completion_et(&fab, 0.0, t0), None);
+    }
+
+    #[test]
+    fn commit_banks_full_power_until_the_battery_ran_out() {
+        // 100 W of panels under a 400 W factory drains the 3 kJ battery in 10 s
+        let (mut world, host) = host();
+        panel(&mut world, host, 100.0);
+        let fab = factory(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 3000.0);
+
+        let t0 = EphemerisTime::epoch();
+        commit_station(&world, host, t0 + EphemerisTime::from_secs(10.0));
+
+        let factor = factory_power_factor(&world, fab);
+        assert_eq!(factor, 0.25);
+        let f = world.get::<&Factory>(fab).unwrap();
+        let job = f.current_job.as_ref().unwrap();
+        // 10 s at the full 400 W...
+        assert_eq!(job.energy_done, 4000.0);
+        // ...then 100 W, its share of the panels
+        let later = job.energy_at(&f, factor, t0 + EphemerisTime::from_secs(20.0));
+        assert_eq!(later, 5000.0);
+    }
+
+    #[test]
+    fn freeing_up_power_speeds_up_a_starved_job_straight_away() {
+        // 400 W of panels shared between a 400 W factory and a 400 W electrolyzer: half each
+        let (mut world, host) = host();
+        panel(&mut world, host, 400.0);
+        let fab = factory(&mut world, host, 400.0);
+        let el = electrolyzer(&mut world, host, 400.0);
+        store(&mut world, host, Resource::Energy, 0.0);
+        store(&mut world, host, Resource::Water, 100.0);
+
+        let t0 = EphemerisTime::epoch();
+        let completion = |world: &World| {
+            let factor = factory_power_factor(world, fab);
+            let f = world.get::<&Factory>(fab).unwrap();
+            f.current_job
+                .as_ref()
+                .unwrap()
+                .completion_et(&f, factor, t0)
+        };
+        // 1 MJ at 200 W
+        assert_eq!(
+            completion(&world),
+            Some(t0 + EphemerisTime::from_secs(5000.0))
+        );
+
+        // what Sim::toggle_electrolyzer does: commit, then switch it off
+        commit_station(&world, host, t0);
+        world.get::<&mut Electrolyzer>(el).unwrap().enabled = false;
+
+        // the factory gets all 400 W right away, with no further commit
+        assert_eq!(
+            completion(&world),
+            Some(t0 + EphemerisTime::from_secs(2500.0))
+        );
     }
 }

@@ -14,8 +14,8 @@ use crate::{
     },
     sim::{
         docking::{dock_tree, free_ports, Docking, PortHost},
-        hierarchy::{Named, ParentBody},
-        industry::Factory,
+        hierarchy::Named,
+        industry::{factory_power_factor, Factory},
         propulsion::Craft,
         resources::{
             resource_store_amount, station_r_au, station_resource_amount_flow, Electrolyzer, Miner,
@@ -121,12 +121,7 @@ fn module_section(ctx: &PanelCtx, host: Entity, i: u32) -> Section {
                 if d.host != host || f.reserved_port != Some(i) {
                     return None;
                 }
-                // prefer the active job, both can be Some!
-                let part_id = f
-                    .current_job
-                    .as_ref()
-                    .map(|j| j.part_id)
-                    .or(f.pending_job)?;
+                let part_id = f.current_job.as_ref().map(|j| j.part_id)?;
                 Some((e, part_id))
             })
     {
@@ -222,7 +217,7 @@ fn resource_store_section(ctx: &PanelCtx, module: Entity) -> Section {
             };
 
             let amount = resource_store_amount(world, module, now);
-            let rate = station_resource_amount_flow(world, station, t.resource, true);
+            let rate = station_resource_amount_flow(world, station, t.resource);
 
             let until = |secs: f32| EphemerisTime::from_secs(secs as f64).short_duration();
 
@@ -289,7 +284,8 @@ fn fabricator_section(ctx: &PanelCtx, module: Entity) -> Section {
     if let Some(job) = &factory.current_job {
         let part_name = &ctx.parts.get(job.part_id).unwrap().name;
 
-        let ready_text = match job.completion_et(&factory, ctx.now) {
+        let factor = factory_power_factor(ctx.world, module);
+        let ready_text = match job.completion_et(&factory, factor, ctx.now) {
             Some(et) => format!("Ready: {}", et.as_calendar().unwrap_or("???".into())),
             None => String::from("Ready:"),
         };
@@ -316,57 +312,22 @@ fn fabricator_section(ctx: &PanelCtx, module: Entity) -> Section {
             Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
                 .use_style(&STYLE)
                 .bound_active(ctx.controls_enabled.clone())
-                .on_click(CommandMessages::CancelActiveFabricator {
+                .on_click(CommandMessages::CancelFabricator {
                     fabricator_entity: module,
                 }),
         );
 
         out.bindings.push(Binding::new({
             move |world: &World, now: EphemerisTime| {
+                let factor = factory_power_factor(world, module);
                 let factory = world.get::<&Factory>(module).unwrap();
                 let job = factory.current_job.as_ref().unwrap();
-                progress.set(job.progress(&factory, now) as f32);
-                let completion_et = job.completion_et(&factory, now);
+                progress.set(job.progress(&factory, factor, now) as f32);
+                let completion_et = job.completion_et(&factory, factor, now);
                 let s = match completion_et {
                     Some(et) if now >= et => "DONE".into(),
                     Some(et) => format!("T- {}", (et - now).short_duration()),
                     None => String::from("T-"),
-                };
-                if *countdown.borrow() != s {
-                    *countdown.borrow_mut() = s;
-                }
-            }
-        }))
-    } else if let Some(part_id) = factory.pending_job {
-        let part = ctx.parts.get(part_id).unwrap();
-
-        let build_time_secs = part.cost.energy_joules / factory.power_watts;
-        let completion = ctx.now + EphemerisTime::from_secs(build_time_secs as f64);
-
-        out.push(Label::new(format!("Queued: {}", part.name)).font(font, ctx.app));
-        out.push(
-            Label::new(format!(
-                "Ready {}",
-                completion.as_calendar().unwrap_or("???".into())
-            ))
-            .font(font, ctx.app),
-        );
-        out.push(Label::bound(countdown.clone()).font(font, ctx.app));
-        out.push(
-            Button::<CommandMessages>::text(vec2(WIDTH - 8.0 * 2.0, 30.0), "Cancel")
-                .use_style(&STYLE)
-                .bound_active(ctx.controls_enabled.clone())
-                .on_click(CommandMessages::CancelQueuedFabricator {
-                    fabricator_entity: module,
-                }),
-        );
-
-        out.bindings.push(Binding::new({
-            move |_world: &World, now: EphemerisTime| {
-                let s = if now >= completion {
-                    "DONE".into()
-                } else {
-                    format!("T- {}", (completion - now).short_duration())
                 };
                 if *countdown.borrow() != s {
                     *countdown.borrow_mut() = s;
@@ -390,8 +351,7 @@ fn fabricator_section(ctx: &PanelCtx, module: Entity) -> Section {
         move |world: &World, _now: EphemerisTime| {
             if let Ok(fab) = world.get::<&Factory>(module) {
                 enabled.set(fab.enabled);
-                let kw = if (fab.enabled && fab.current_job.is_some()) || fab.pending_job.is_some()
-                {
+                let kw = if fab.enabled && fab.current_job.is_some() {
                     -fab.power_watts
                 } else {
                     0.0
@@ -544,12 +504,13 @@ fn reserved_port_section(ctx: &PanelCtx, fab: Entity, part_id: u64) -> Section {
 
     out.bindings.push(Binding::new({
         move |world: &World, now: EphemerisTime| {
+            let factor = factory_power_factor(world, fab);
             let Ok(factory) = world.get::<&Factory>(fab) else {
                 return;
             };
             let s = match factory.current_job.as_ref() {
-                None => String::from("Queued"),
-                Some(job) => match job.completion_et(&factory, now) {
+                None => String::new(),
+                Some(job) => match job.completion_et(&factory, factor, now) {
                     Some(et) if now >= et => String::from("DONE"),
                     Some(et) => format!("T- {}", (et - now).short_duration()),
                     None => String::from("T-"),

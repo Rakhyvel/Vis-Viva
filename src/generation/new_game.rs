@@ -208,7 +208,6 @@ pub fn new_game(parts: &PartRegistry, tile_sets: &TileSets) -> NewGame {
         },
         Factory {
             current_job: None,
-            pending_job: None,
             power_watts: 5000.0,
             enabled: false,
             reserved_port: None,
