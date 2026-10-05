@@ -137,6 +137,7 @@ fn mission_section(ctx: &PanelCtx, selected: Entity) -> Section {
         out.push(
             Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Plan Mission...")
                 .use_style_accented(&STYLE)
+                .bound_active(ctx.controls_enabled.clone())
                 .on_click(CommandMessages::OpenManeuver { craft: selected }),
         )
     };

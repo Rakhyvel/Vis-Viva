@@ -54,7 +54,6 @@ impl FabricatorUi {
 
     pub fn update(&mut self, app: &App) -> Option<FabricatorAction> {
         for msg in recv_msgs(app, &mut self.modal) {
-            println!("{msg:?}");
             match msg {
                 FabricatorMessages::Build(part_id) => {
                     let Some(fabricator) = self.fabricator else {

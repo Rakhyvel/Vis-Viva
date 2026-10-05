@@ -36,6 +36,7 @@ use crate::{
         bodies::Body,
         docking::PortHost,
         hierarchy::{Named, ParentBody},
+        life_support::Station,
         parts::PartRegistry,
         Sim, SimEffect,
     },
@@ -72,6 +73,8 @@ pub struct Gameplay {
 
     /// Buttons in the side panel are only clickable while paused
     controls_enabled: Rc<Cell<bool>>,
+    /// Whether or not all crew are dead
+    game_over: bool,
 }
 
 impl Scene for Gameplay {
@@ -82,9 +85,7 @@ impl Scene for Gameplay {
             || self.transfer_ui.is_shown()
             || self.game_over_ui.is_shown();
 
-        if self.game_over_ui.update(app) {
-            app.running.set(false);
-        }
+        self.game_over_ui.update(app);
 
         if let Some(FabricatorAction {
             fabricator,
@@ -172,7 +173,8 @@ impl Scene for Gameplay {
         self.apply_sim_effects(app);
 
         // Update GUI stuff
-        self.controls_enabled.set(self.sim.clock().paused());
+        self.controls_enabled
+            .set(self.sim.clock().paused() && !self.game_over);
 
         if !modal_open {
             self.handle_tab(app);
@@ -287,6 +289,7 @@ impl Gameplay {
             emergency_banner: EmergencyBanner::new(),
 
             controls_enabled: Rc::new(Cell::new(false)),
+            game_over: false,
         };
 
         retval.sync_panel(app);
@@ -354,9 +357,21 @@ impl Gameplay {
                         .world()
                         .get::<&Named>(station)
                         .map(|n| n.name.clone())
-                        .unwrap_or_default();
+                        .unwrap();
                     self.game_over_ui
                         .show(&name, cause, self.sim.clock().now(), app);
+
+                    // Game over if nobody is left!
+                    let crew_left: usize = self
+                        .sim
+                        .world()
+                        .query::<&Station>()
+                        .iter()
+                        .map(|(_, s)| s.num_crew)
+                        .sum();
+                    if crew_left == 0 {
+                        self.game_over = true;
+                    }
                 }
             }
         }

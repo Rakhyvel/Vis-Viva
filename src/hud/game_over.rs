@@ -18,7 +18,7 @@ use crate::{
 
 #[derive(Clone)]
 enum GameOverMessages {
-    Quit,
+    Close,
 }
 
 pub struct GameOverUi {
@@ -59,9 +59,9 @@ impl GameOverUi {
                         .color(STYLE.text_secondary),
                 ),
                 Box::new(
-                    Button::text(vec2(WIDTH, 30.0), "Quit")
+                    Button::text(vec2(WIDTH, 30.0), "Close")
                         .use_style(&STYLE)
-                        .on_click(GameOverMessages::Quit),
+                        .on_click(GameOverMessages::Close),
                 ),
             ])
             .cross_align(Align::Center)
@@ -73,10 +73,14 @@ impl GameOverUi {
         self.modal.reposition(app);
     }
 
-    pub fn update(&mut self, app: &App) -> bool {
-        recv_msgs(app, &mut self.modal)
-            .into_iter()
-            .any(|m| matches!(m, GameOverMessages::Quit))
+    pub fn update(&mut self, app: &App) {
+        for msg in recv_msgs(app, &mut self.modal) {
+            match msg {
+                GameOverMessages::Close => {
+                    self.modal.set_shown(false);
+                }
+            }
+        }
     }
 
     pub fn render(&self, app: &App) {
