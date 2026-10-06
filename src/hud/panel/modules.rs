@@ -49,7 +49,7 @@ pub fn module_list(ctx: &PanelCtx, station: Entity) -> Section {
 
     if number_docked > 1 {
         out.push(
-            Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Transfer")
+            Button::<CommandMessages>::text(vec2(WIDTH, 30.0), "Transfers")
                 .use_style(&STYLE)
                 .bound_active(ctx.controls_enabled.clone())
                 .on_click(CommandMessages::OpenTransfer { craft: station }),

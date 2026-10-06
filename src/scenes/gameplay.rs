@@ -104,7 +104,7 @@ impl Scene for Gameplay {
         if let Some(TransferResult { from, to }) =
             self.transfer_ui.update(now, self.sim.world(), app)
         {
-            self.sim.transfer(from, to);
+            self.sim.start_transfer(from, to);
             self.transfer_ui.rebuild(now, self.sim.world(), app);
         }
 

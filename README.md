@@ -104,7 +104,6 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [x] spawn the game-over modal on full crew death, but don't close out game, just gray-out all actions
   - [ ] gradual resource transfers
     - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)
-    - [ ] Need some way to vent water of a Dray that's too heavy
   - [ ] disable miner if no power
   - [ ] spawn station from toml
   - [ ] small UI fixes

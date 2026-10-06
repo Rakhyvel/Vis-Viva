@@ -15,6 +15,7 @@ use crate::{
         parts::PartRegistry,
         propulsion::Craft,
         resources::{next_reservoir_limits, Electrolyzer, Miner, Pool, Resource},
+        transfer::{transfer_rate, Transfer},
     },
 };
 
@@ -29,6 +30,7 @@ pub mod mission;
 pub mod parts;
 pub mod propulsion;
 pub mod resources;
+pub mod transfer;
 
 pub struct Sim {
     world: World,
@@ -106,6 +108,8 @@ impl Sim {
                 for (host, _) in self.world.query::<&PortHost>().iter() {
                     resources::commit_station(&self.world, host, stop);
                 }
+
+                transfer::prune_transfers(&mut self.world);
 
                 for event in self.events.pop_due(stop) {
                     events::apply(&mut self.world, stop, event, &mut self.effects);
@@ -281,18 +285,31 @@ impl Sim {
         self.world.get::<&mut Craft>(craft).unwrap().command = None
     }
 
-    pub fn transfer(&mut self, from: Pool, to: Pool) {
-        // Moving resources can affect modules, so commit both ends first
+    pub fn start_transfer(&mut self, from: Pool, to: Pool) {
         self.commit(from.host);
-        self.commit(to.host);
-        resources::transfer_resource(
-            &self.world,
-            from.host,
-            to.host,
-            from.resource,
-            f32::MAX,
-            self.clock.now(),
-        );
+        if let Some(old) = transfer::transfer_from(&self.world, from) {
+            // get rid of the old one
+            self.world.despawn(old).expect("should be a live entity")
+        }
+        self.world.spawn((Transfer {
+            from,
+            to,
+            rate: transfer_rate(from.resource),
+        },));
+        self.recompute_run_until();
+    }
+
+    fn cancel_transfer(&mut self, transfer: Entity) {
+        let from = self
+            .world
+            .get::<&Transfer>(transfer)
+            .expect("cancel_transfer is only called with transfer entities")
+            .from;
+        self.commit(from.host);
+        self.world
+            .despawn(transfer)
+            .expect("cancel_transfer is called with a live transfer entity");
+        self.recompute_run_until();
     }
 
     pub fn undock(&mut self, craft: Entity) {
@@ -302,6 +319,8 @@ impl Sim {
         self.commit(host);
         self.commit(craft);
         if docking::undock(&mut self.world, craft, self.clock.now()) {
+            transfer::prune_transfers(&mut self.world); // sever any transfers!
+            self.recompute_run_until();
             self.effects.push(SimEffect::OrbitChanged {
                 craft,
                 soi_radius: None,

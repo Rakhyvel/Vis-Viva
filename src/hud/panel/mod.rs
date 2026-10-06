@@ -7,7 +7,11 @@ use nalgebra_glm::{vec2, Vec2};
 use crate::{
     astro::epoch::EphemerisTime,
     hud::{
-        panel::{body::body_selection, craft::craft_selection, modules::module_list},
+        panel::{
+            body::body_selection,
+            craft::{craft_selection, transfers_section},
+            modules::module_list,
+        },
         Binding, Section,
     },
     sim::{
@@ -18,6 +22,7 @@ use crate::{
         life_support::Station,
         parts::PartRegistry,
         propulsion::Craft,
+        transfer::Transfer,
     },
     ui::{
         anchor::{Anchor, AnchorPoint},
@@ -116,6 +121,10 @@ fn build_selection_widgets(ctx: &PanelCtx, selected: Entity) -> Section {
     out.push(Label::new(name).font(font_big, ctx.app));
     out.push(HRule::new(STYLE.border, 1.0, WIDTH));
 
+    if let Some(transfer) = transfers_section(ctx, selected) {
+        out.merge(transfer);
+    }
+
     if ctx
         .world
         .entity(selected)
@@ -157,6 +166,9 @@ pub fn panel_structure_bits(world: &World) -> u64 {
     for (e, f) in world.query::<&Factory>().iter() {
         let s = f.current_job.is_some() as u64;
         h ^= (e.id() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ s;
+    }
+    for (e, _) in world.query::<&Transfer>().iter() {
+        h ^= (e.id() as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     }
     for (e, c) in world.query::<&Craft>().iter() {
         let s = match (&c.command, c.command_scheduled) {

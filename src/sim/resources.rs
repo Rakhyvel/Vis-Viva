@@ -9,10 +9,11 @@ use crate::{
     },
     sim::{
         bodies::Body,
-        docking::Docking,
+        docking::{dock_tree, Docking},
         hierarchy::{Landed, ParentBody},
         industry::Factory,
         life_support::{Station, O2_PER_CREW_DAY, WATER_PER_CREW_DAY},
+        transfer::{transfer_flow, Transfer},
     },
 };
 
@@ -60,7 +61,7 @@ fn stores_of(world: &World, station: Entity, r: Resource) -> Vec<Entity> {
 }
 
 /// Just the committed totals, no extrapolation, safe to call from flow fns
-fn committed_totals(world: &World, station: Entity, r: Resource) -> (f32, f32) {
+pub fn committed_totals(world: &World, station: Entity, r: Resource) -> (f32, f32) {
     let mut amount = 0.0;
     let mut capacity = 0.0;
     for (_, (d, s)) in world.query::<(&Docking, &ResourceStore)>().iter() {
@@ -127,19 +128,26 @@ pub fn resource_store_amount(world: &World, module: Entity, t: EphemerisTime) ->
 }
 
 pub fn commit_station(world: &World, station: Entity, now: EphemerisTime) {
+    let mut hosts = dock_tree(world, station);
+    if !hosts.contains(&station) {
+        hosts.push(station);
+    }
+
     let stores: Vec<(Entity, f32)> = world
         .query::<(&Docking, &ResourceStore)>()
         .iter()
-        .filter(|(_, (docking, _))| docking.host == station)
+        .filter(|(_, (docking, _))| hosts.contains(&docking.host))
         .map(|(module, (_, _))| (module, resource_store_amount(world, module, now)))
         .collect();
 
-    let factor = power_factor(world, station);
     let jobs: Vec<(Entity, f32)> = world
         .query::<(&Docking, &Factory)>()
         .iter()
-        .filter(|(_, (docking, _))| docking.host == station)
-        .filter_map(|(fab, (_, f))| Some((fab, f.current_job.as_ref()?.energy_at(f, factor, now))))
+        .filter(|(_, (docking, _))| hosts.contains(&docking.host))
+        .filter_map(|(fab, (docking, f))| {
+            let factor = power_factor(world, docking.host);
+            Some((fab, f.current_job.as_ref()?.energy_at(f, factor, now)))
+        })
         .collect();
 
     for (module, amount) in stores {
@@ -216,25 +224,6 @@ pub fn take_resource(world: &World, station: Entity, r: Resource, amount: f32, n
             .expect("stores_of only returns ResourceStores entities");
         store.amount = a - amount * a / total;
     }
-}
-
-/// Move up to `amount` of resouce `r`, limited by what `from` has and what `to` can hold.
-/// Returns how much actually moved
-pub fn transfer_resource(
-    world: &World,
-    from: Entity,
-    to: Entity,
-    r: Resource,
-    amount: f32,
-    now: EphemerisTime,
-) -> f32 {
-    let (have, _) = station_resource_totals(world, from, r, now);
-    let (stored, capacity) = station_resource_totals(world, to, r, now);
-    let moved = amount.min(have).min(capacity - stored).max(0.0);
-
-    take_resource(world, from, r, moved, now);
-    add_resource(world, to, r, moved, now);
-    moved
 }
 
 pub fn transferable(
@@ -395,6 +384,9 @@ pub fn station_supply_watts(world: &World, station: Entity) -> f32 {
         }
     }
 
+    // Sum up all the energy transfers to this station
+    w += transfer_flow(world, station, Resource::Energy);
+
     w
 }
 
@@ -467,9 +459,11 @@ pub fn station_resource_amount_flow(world: &World, host: Entity, r: Resource) ->
     let el = electrolyzer_kg_per_s(world, host);
 
     match r {
-        Resource::Water => crew_water + -el + miner_kg_per_s(world, host),
-        Resource::Oxygen => crew_o2 + el * O2_PER_H2O,
-        Resource::Hydrogen => el * H2_PER_H2O,
+        Resource::Water => {
+            crew_water + -el + miner_kg_per_s(world, host) + transfer_flow(world, host, r)
+        }
+        Resource::Oxygen => crew_o2 + el * O2_PER_H2O + transfer_flow(world, host, r),
+        Resource::Hydrogen => el * H2_PER_H2O + transfer_flow(world, host, r),
         Resource::Energy => station_net_watts(world, host),
     }
 }
