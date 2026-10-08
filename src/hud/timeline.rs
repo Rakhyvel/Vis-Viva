@@ -18,7 +18,8 @@ use crate::{
         life_support::Station,
         mission::BurnPurpose,
         propulsion::Craft,
-        resources::{next_reservoir_limits, power_factor},
+        resources::{next_reservoir_limits, power_factor, Pool},
+        transfer::Transfer,
         Sim,
     },
     ui::{msg::MsgQueue, oklch::oklch, style::Style, widget::Widget},
@@ -141,24 +142,62 @@ pub fn build_marks(sim: &Sim) -> Vec<TimelineMark> {
         });
     }
 
-    // Add projected reservoir limit events, Depleted and Filled
-    for (entity, (_, named)) in sim.world().query::<(&PortHost, &Named)>().iter() {
-        for (et, resource, rate) in next_reservoir_limits(sim.world(), entity, sim.clock().now()) {
-            if rate < 0.0 {
-                marks.push(TimelineMark {
-                    t: et,
-                    kind: MarkKind::Critical,
-                    subject: named.name.clone(),
-                    detail: format!("{} Depleted", resource.long_name()),
+    // Get the projected reservoir limit events, Depleted and Filled
+    let mut limits: Vec<(Pool, EphemerisTime, bool)> = sim
+        .world()
+        .query::<(&PortHost, &Named)>()
+        .iter()
+        .flat_map(|(entity, _)| {
+            next_reservoir_limits(sim.world(), entity, sim.clock().now())
+                .into_iter()
+                .map(move |(et, resource, rate)| {
+                    (
+                        Pool {
+                            host: entity,
+                            resource: resource,
+                        },
+                        et,
+                        rate < 0.0,
+                    )
                 })
-            } else {
-                marks.push(TimelineMark {
-                    t: et,
-                    kind: MarkKind::Good,
-                    subject: named.name.clone(),
-                    detail: format!("{} Filled", resource.long_name()),
-                })
-            }
+        })
+        .collect();
+
+    // Remove reservoir limits if they're apart of a transfer and occur after the transfer ends
+    for (_, t) in sim.world().query::<&Transfer>().iter() {
+        let empties = limits
+            .iter()
+            .find(|(p, _, depleting)| *p == t.from && *depleting)
+            .map(|l| l.1);
+        let fills = limits
+            .iter()
+            .find(|(p, _, depleting)| *p == t.to && !depleting)
+            .map(|l| l.1);
+        let Some(end) = [empties, fills].into_iter().flatten().min() else {
+            continue; // the transfer never ends on its own
+        };
+        limits.retain(|(p, et, _)| !((*p == t.from || *p == t.to) && *et > end));
+    }
+
+    // Turn the remaining reservoir limits into marks as yoozh
+    for (pool, et, depleting) in limits {
+        let resource = &pool.resource;
+        let named = &sim.world().get::<&Named>(pool.host).unwrap();
+
+        if depleting {
+            marks.push(TimelineMark {
+                t: et,
+                kind: MarkKind::Critical,
+                subject: named.name.clone(),
+                detail: format!("{} Depleted", resource.long_name()),
+            })
+        } else {
+            marks.push(TimelineMark {
+                t: et,
+                kind: MarkKind::Good,
+                subject: named.name.clone(),
+                detail: format!("{} Filled", resource.long_name()),
+            })
         }
     }
 

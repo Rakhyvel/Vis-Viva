@@ -102,9 +102,9 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [x] dehydration takes 3 days
     - [x] need to cascade energy/water outages
     - [x] spawn the game-over modal on full crew death, but don't close out game, just gray-out all actions
-  - [ ] gradual resource transfers
-    - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)
-    - [ ] dont do depletion marks for transfers if the transfer will end before it depletes. Or filled if depletion is first. Whichever
+  - [x] gradual resource transfers
+    - [x] Should show all inflows/outflows for a tank (esp. crew for water + O2)
+    - [x] dont do depletion marks for transfers if the transfer will end before it depletes. Or filled if depletion is first. Whichever
   - [x] disable miner if no power
   - [ ] small UI fixes
     - [ ] make buttons/sliders pause automatically
