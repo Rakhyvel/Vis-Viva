@@ -101,11 +101,17 @@ impl Scene for Gameplay {
             self.sim.assign_command(craft, command);
         }
 
-        if let Some(TransferResult { from, to }) =
-            self.transfer_ui.update(now, self.sim.world(), app)
-        {
-            self.sim.start_transfer(from, to);
-            self.transfer_ui.rebuild(now, self.sim.world(), app);
+        if let Some(transfer_res) = self.transfer_ui.update(now, self.sim.world(), app) {
+            match transfer_res {
+                TransferResult::Start(from, to) => {
+                    self.sim.start_transfer(from, to);
+                    self.transfer_ui.rebuild(now, self.sim.world(), app);
+                }
+                TransferResult::Cancel(e) => {
+                    self.sim.cancel_transfer(e);
+                    self.transfer_ui.rebuild(now, self.sim.world(), app);
+                }
+            }
         }
 
         if !modal_open {

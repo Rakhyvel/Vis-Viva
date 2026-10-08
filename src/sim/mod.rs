@@ -299,7 +299,7 @@ impl Sim {
         self.recompute_run_until();
     }
 
-    fn cancel_transfer(&mut self, transfer: Entity) {
+    pub fn cancel_transfer(&mut self, transfer: Entity) {
         let from = self
             .world
             .get::<&Transfer>(transfer)

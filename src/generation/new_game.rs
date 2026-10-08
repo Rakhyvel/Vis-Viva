@@ -123,6 +123,7 @@ pub fn new_game(parts: &PartRegistry, tile_sets: &TileSets) -> NewGame {
     };
 
     starting_inventory.add(id_hash("ilmenite"), 8);
+    starting_inventory.add(id_hash("metal"), 8);
 
     world
         .insert(
@@ -182,7 +183,7 @@ pub fn new_game(parts: &PartRegistry, tile_sets: &TileSets) -> NewGame {
         },
         ResourceStore {
             resource: Resource::Oxygen,
-            amount: 10.0,
+            amount: 600.0,
             capacity: 600.0,
             amount_et: EphemerisTime::epoch(),
         },
@@ -195,7 +196,7 @@ pub fn new_game(parts: &PartRegistry, tile_sets: &TileSets) -> NewGame {
         },
         ResourceStore {
             resource: Resource::Hydrogen,
-            amount: 0.0,
+            amount: 100.0,
             capacity: 100.0,
             amount_et: EphemerisTime::epoch(),
         },

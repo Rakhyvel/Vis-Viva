@@ -14,7 +14,6 @@ use crate::{
         hierarchy::Named,
         mission::ScheduledBurn,
         propulsion::{craft_dv, Craft},
-        transfer::Transfer,
     },
     ui::{
         button::Button,
@@ -69,39 +68,6 @@ pub fn craft_selection(ctx: &PanelCtx, selected: Entity) -> Section {
     }));
 
     out
-}
-
-pub fn transfers_section(ctx: &PanelCtx, host: Entity) -> Option<Section> {
-    let transfers: Vec<Transfer> = ctx
-        .world
-        .query::<&Transfer>()
-        .iter()
-        .filter(|(_e, t)| t.from.host == host || t.to.host == host)
-        .map(|(_e, t)| *t)
-        .collect();
-
-    if transfers.is_empty() {
-        return None;
-    }
-
-    let mut out = Section::default();
-
-    let font = ctx.app.renderer.get_font_id_from_name("font").unwrap();
-    let font_small_bold = ctx
-        .app
-        .renderer
-        .get_font_id_from_name("font-small-bold")
-        .unwrap();
-
-    out.push(Label::new("TRANSFERS").font(font_small_bold, ctx.app));
-
-    for t in transfers {
-        let from_name = ctx.world.get::<&Named>(t.from.host).unwrap();
-        let to_name = ctx.world.get::<&Named>(t.to.host).unwrap();
-        out.push(Label::new(format!("{} -> {}", from_name.name, to_name.name)).font(font, ctx.app));
-    }
-
-    Some(out)
 }
 
 fn mission_section(ctx: &PanelCtx, selected: Entity) -> Section {

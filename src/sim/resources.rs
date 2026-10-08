@@ -13,7 +13,7 @@ use crate::{
         hierarchy::{Landed, ParentBody},
         industry::Factory,
         life_support::{Station, O2_PER_CREW_DAY, WATER_PER_CREW_DAY},
-        transfer::{transfer_flow, Transfer},
+        transfer::transfer_flow,
     },
 };
 
@@ -226,18 +226,6 @@ pub fn take_resource(world: &World, station: Entity, r: Resource, amount: f32, n
     }
 }
 
-pub fn transferable(
-    world: &World,
-    from: Entity,
-    to: Entity,
-    r: Resource,
-    now: EphemerisTime,
-) -> f32 {
-    let (have, _) = station_resource_totals(world, from, r, now);
-    let (stored, capacity) = station_resource_totals(world, to, r, now);
-    have.min(have).min(capacity - stored).max(0.0)
-}
-
 /// Mass of all stored resources.
 pub fn stored_mass_kg(world: &World, host: Entity, t: EphemerisTime) -> f64 {
     let mut kg = 0.0;
@@ -358,7 +346,7 @@ pub fn miner_kg_per_s(world: &World, host: Entity) -> f32 {
     let Ok(parent) = world.get::<&ParentBody>(host) else {
         return 0.0;
     };
-    let Ok(body) = world.get::<&Body>(parent.id) else {
+    let Ok(_body) = world.get::<&Body>(parent.id) else {
         return 0.0;
     };
 

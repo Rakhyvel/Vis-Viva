@@ -8,11 +8,12 @@ use crate::{
     sim::{
         docking::dock_tree,
         hierarchy::Named,
-        resources::{station_resource_totals, transferable, Pool, Resource},
+        resources::{station_resource_totals, Pool, Resource},
+        transfer::Transfer,
     },
     ui::{
         button::Button,
-        container::{Align, Container, Flow},
+        container::{Align, Container, Flow, Justify},
         hrule::HRule,
         label::Label,
         modal::Modal,
@@ -28,6 +29,7 @@ enum TransferMessages {
     SelectFrom(Pool),
     SelectTo(Pool),
     Transfer,
+    Cancel(Entity),
     Close,
 }
 
@@ -38,9 +40,9 @@ pub struct TransferUi {
     to: Option<Pool>,
 }
 
-pub struct TransferResult {
-    pub from: Pool,
-    pub to: Pool,
+pub enum TransferResult {
+    Start(Pool, Pool),
+    Cancel(Entity),
 }
 
 impl TransferUi {
@@ -89,9 +91,12 @@ impl TransferUi {
                 }
                 TransferMessages::Transfer => {
                     if let (Some(from), Some(to)) = (self.from, self.to) {
-                        action = Some(TransferResult { from, to })
+                        self.from = None;
+                        self.to = None;
+                        action = Some(TransferResult::Start(from, to))
                     }
                 }
+                TransferMessages::Cancel(e) => action = Some(TransferResult::Cancel(e)),
                 TransferMessages::Close => {
                     self.modal.set_shown(false);
                 }
@@ -120,6 +125,10 @@ impl TransferUi {
         let mut right: Vec<Box<dyn Widget<TransferMessages>>> =
             vec![Box::new(Label::new("TO").font(font_small_bold, app))];
 
+        let transfers: Vec<Transfer> = world.query::<&Transfer>().iter().map(|(_, t)| *t).collect();
+        let pumping_out = |p: Pool| transfers.iter().any(|t| t.from == p);
+        let pumping_in = |p: Pool| transfers.iter().any(|t| t.to == p);
+
         for host in dock_tree(world, craft) {
             let name = world
                 .get::<&Named>(host)
@@ -139,7 +148,7 @@ impl TransferUi {
                     stored,
                     cap,
                     self.from == Some(pool),
-                    stored > 0.0,
+                    stored > 0.0 && !pumping_out(pool) && !pumping_in(pool),
                     TransferMessages::SelectFrom(pool),
                     COL_W,
                 ));
@@ -150,7 +159,7 @@ impl TransferUi {
                         stored,
                         cap,
                         self.to == Some(pool),
-                        stored < cap,
+                        stored < cap && !pumping_out(pool),
                         TransferMessages::SelectTo(pool),
                         COL_W,
                     ))
@@ -170,21 +179,6 @@ impl TransferUi {
             }
         }
 
-        let summary = match (self.from, self.to) {
-            (Some(from), Some(to)) => {
-                let kg = transferable(world, from.host, to.host, from.resource, now);
-                let (unit, _) = from.resource.presentation_units();
-                let (scale, _) = from.resource.presentation_scalars();
-                format!(
-                    "Moves {:.0} {unit} of {}",
-                    kg * scale,
-                    from.resource.long_name()
-                )
-            }
-            (Some(_), None) => String::from("Choose a destination"),
-            _ => String::from("Chosoe a source"),
-        };
-
         let columns = Container::new(vec![
             Box::new(ScrollContainer::new(
                 vec2(COL_W, HEIGHT),
@@ -197,29 +191,37 @@ impl TransferUi {
         ])
         .flow(Flow::Horizontal);
 
+        let mut widgets: Vec<Box<dyn Widget<TransferMessages>>> = vec![
+            Box::new(Label::new("TRANSFER RESOURCES").font(font_big, app)),
+            Box::new(HRule::new(STYLE.border, 1.0, COL_W * 2.0)),
+            Box::new(columns),
+            Box::new(
+                Button::text(vec2(COL_W * 2.0, 30.0), "Start transfer")
+                    .use_style(&STYLE)
+                    .active(self.from.is_some() && self.to.is_some())
+                    .on_click(TransferMessages::Transfer),
+            ),
+            Box::new(HRule::new(STYLE.border, 1.0, COL_W * 2.0)),
+        ];
+
+        widgets.push(Box::new(
+            Label::new("ACTIVE TRANSFERS").font(font_small_bold, app),
+        ));
+        widgets.push(transfer_list(world, craft, COL_W * 2.0, app));
+        widgets.push(Box::new(HRule::new(STYLE.border, 1.0, COL_W * 2.0)));
+
+        widgets.push(Box::new(
+            Button::text(vec2(COL_W * 2.0, 30.0), "Close")
+                .use_style(&STYLE)
+                .on_click(TransferMessages::Close),
+        ));
+
         self.modal = Modal::new(Box::new(
-            Container::new(vec![
-                Box::new(Label::new("TRANSFER RESOURCES").font(font_big, app)),
-                Box::new(HRule::new(STYLE.border, 1.0, COL_W * 2.0)),
-                Box::new(columns),
-                Box::new(HRule::new(STYLE.border, 1.0, COL_W * 2.0)),
-                Box::new(Label::new(summary).font(font_small_bold, app)),
-                Box::new(
-                    Button::text(vec2(COL_W * 2.0, 30.0), "Transfer")
-                        .use_style(&STYLE)
-                        .active(self.from.is_some() && self.to.is_some())
-                        .on_click(TransferMessages::Transfer),
-                ),
-                Box::new(
-                    Button::text(vec2(COL_W * 2.0, 30.0), "Close")
-                        .use_style(&STYLE)
-                        .on_click(TransferMessages::Close),
-                ),
-            ])
-            .cross_align(Align::Center)
-            .background_color(STYLE.surface)
-            .border(STYLE.border, 1.0)
-            .padding(vec2(12.0, 12.0)),
+            Container::new(widgets)
+                .cross_align(Align::Center)
+                .background_color(STYLE.surface)
+                .border(STYLE.border, 1.0)
+                .padding(vec2(12.0, 12.0)),
         ))
         .shown(self.modal.is_shown());
 
@@ -272,4 +274,85 @@ fn pool_card(
         .padding(Vec2::zeros())
         .gap(2.0),
     )
+}
+
+fn transfer_label(world: &World, t: &Transfer) -> String {
+    let name = |host: Entity| {
+        world
+            .get::<&Named>(host)
+            .map_or_else(|_| "???".to_string(), |n| n.name.clone())
+    };
+    format!(
+        "{}: {} to {}",
+        t.from.resource.long_name(),
+        name(t.from.host),
+        name(t.to.host)
+    )
+}
+
+fn modal_transfer_row(
+    world: &World,
+    e: Entity,
+    t: &Transfer,
+    width: f32,
+    app: &App,
+) -> Box<dyn Widget<TransferMessages>> {
+    let font = app.renderer.get_font_id_from_name("font").unwrap();
+
+    Box::new(
+        Container::new(vec![
+            Box::new(Label::new(transfer_label(world, t)).font(font, app)),
+            Box::new(
+                Button::text(vec2(70.0, 24.0), "Cancel")
+                    .use_style(&STYLE)
+                    .on_click(TransferMessages::Cancel(e)),
+            ),
+        ])
+        .flow(Flow::Horizontal)
+        .justify(Justify::SpaceBetween)
+        .cross_align(Align::Center)
+        .padding(Vec2::zeros())
+        .fixed_width(vec2(width, 0.0)),
+    )
+}
+
+fn transfer_list(
+    world: &World,
+    craft: Entity,
+    width: f32,
+    app: &App,
+) -> Box<dyn Widget<TransferMessages>> {
+    const LIST_H: f32 = 120.0;
+    let font_italic = app
+        .renderer
+        .get_font_id_from_name("font-small-italic")
+        .unwrap();
+    let tree = dock_tree(world, craft);
+
+    // Sort by label, so rows don't jump around between rebuilds
+    let mut transfers: Vec<(String, Entity, Transfer)> = world
+        .query::<&Transfer>()
+        .iter()
+        .filter(|(_, t)| tree.contains(&t.from.host))
+        .map(|(e, t)| (transfer_label(world, t), e, *t))
+        .collect();
+    transfers.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let rows: Vec<Box<dyn Widget<TransferMessages>>> = if transfers.is_empty() {
+        vec![Box::new(
+            Label::new("No transfers")
+                .font(font_italic, app)
+                .color(STYLE.text_secondary),
+        )]
+    } else {
+        transfers
+            .iter()
+            .map(|(_, e, t)| modal_transfer_row(world, *e, t, width, app))
+            .collect()
+    };
+
+    Box::new(ScrollContainer::new(
+        vec2(width, LIST_H),
+        Box::new(Container::new(rows).padding(Vec2::zeros()).gap(4.0)),
+    ))
 }

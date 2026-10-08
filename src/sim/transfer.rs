@@ -1,13 +1,8 @@
 use hecs::{Entity, World};
 
-use crate::{
-    astro::epoch::EphemerisTime,
-    sim::{
-        docking::dock_root,
-        resources::{
-            committed_totals, station_resource_amount_flow, station_resource_totals, Pool, Resource,
-        },
-    },
+use crate::sim::{
+    docking::dock_root,
+    resources::{committed_totals, Pool, Resource},
 };
 
 /// A transfer between one resource pool to another
@@ -88,25 +83,6 @@ pub fn transfer_flow(world: &World, host: Entity, r: Resource) -> f32 {
         .map(|(t, s)| t.rate * s)
         .sum();
     net_flow
-}
-
-/// Get the time a transfer will complete, if it ever will
-pub fn transfer_eta(world: &World, t: &Transfer, now: EphemerisTime) -> Option<EphemerisTime> {
-    let (from_amount, _) = station_resource_totals(world, t.from.host, t.from.resource, now);
-    let (to_amount, to_capacity) = station_resource_totals(world, t.to.host, t.to.resource, now);
-
-    let from_flow = station_resource_amount_flow(world, t.from.host, t.from.resource);
-    let to_flow = station_resource_amount_flow(world, t.to.host, t.to.resource);
-
-    let empties = (from_flow < 0.0).then(|| from_amount / -from_amount);
-    let fills = (to_flow > 0.0).then(|| (to_capacity - to_amount) / to_flow);
-
-    let secs = match (empties, fills) {
-        (Some(a), Some(b)) => a.min(b),
-        (Some(s), None) | (None, Some(s)) => s,
-        (None, None) => return None,
-    };
-    Some(now + EphemerisTime::from_secs(secs as f64))
 }
 
 /// Despawn any stale transfer entities

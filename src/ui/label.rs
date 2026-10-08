@@ -65,13 +65,12 @@ impl<Msg: Clone + 'static> Widget<Msg> for Label {
     fn update(&mut self, app: &App, _msgq: &mut MsgQueue<Msg>) {
         if let Some(src) = &self.source {
             let s = src.borrow();
-            if *s == self.label {
-                return; // unchanged
-            }
-            self.label = s.clone();
-            if let Some(font_id) = self.font_id {
-                let font = app.renderer.get_font_from_id(font_id).unwrap();
-                self.rect.size = font.measure(&self.label)
+            if *s != self.label {
+                self.label = s.clone();
+                if let Some(font_id) = self.font_id {
+                    let font = app.renderer.get_font_from_id(font_id).unwrap();
+                    self.rect.size = font.measure(&self.label)
+                }
             }
         };
 
