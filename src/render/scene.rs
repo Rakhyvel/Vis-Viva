@@ -167,7 +167,7 @@ pub fn attach_body_model(
         entity,
         mesh_id,
         texture_id,
-        vec3(0.01, 0.01, 0.01),
+        vec3(r, r, r),
     );
 }
 

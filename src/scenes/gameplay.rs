@@ -207,7 +207,7 @@ impl Scene for Gameplay {
 
         let marks = timeline::build_marks(&self.sim);
         self.footer.set_marks(marks);
-        self.sync_panel(app);
+        self.sync_panel(modal_open, app);
         self.emergency_banner
             .sync(app, emergency_lines(self.sim.world(), now));
 
@@ -292,7 +292,7 @@ impl Gameplay {
             game_over: false,
         };
 
-        retval.sync_panel(app);
+        retval.sync_panel(false, app);
 
         retval
     }
@@ -384,7 +384,7 @@ impl Gameplay {
         Some(body.body_radius)
     }
 
-    fn sync_panel(&mut self, app: &App) {
+    fn sync_panel(&mut self, modal_open: bool, app: &App) {
         let now = self.sim.clock().now();
 
         let footer_view = FooterView {
@@ -400,7 +400,7 @@ impl Gameplay {
         }
 
         let key = self.gui_structure_key();
-        if key != self.gui_built_for {
+        if key != self.gui_built_for && !modal_open {
             self.gui_built_for = key;
             let ctx = PanelCtx {
                 app,
