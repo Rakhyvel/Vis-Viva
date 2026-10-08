@@ -95,7 +95,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
       - [x] shows all the connected resource stores on left, when you select one the box in the right shows all the possible destinations
     - [x] dont just take H2 and O2 (players have to transfer to docked craft)
 - [ ] Post-MVP cleanup
-  - [ ] split up big stuff:
+  - [x] split up big stuff:
     - [x] split `state.rs` so it returns DVec3 samples and leaves f32 conversion to rendering
   - [x] _start_ crew death on resource depletion, rather than immediate death, with big red text timer banner
     - [x] suffocation takes 3 mins
@@ -104,8 +104,8 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [x] spawn the game-over modal on full crew death, but don't close out game, just gray-out all actions
   - [ ] gradual resource transfers
     - [ ] Should show all inflows/outflows for a tank (esp. crew for water + O2)
-  - [ ] disable miner if no power
-  - [ ] spawn station from toml
+    - [ ] dont do depletion marks for transfers if the transfer will end before it depletes. Or filled if depletion is first. Whichever
+  - [x] disable miner if no power
   - [ ] small UI fixes
     - [ ] make buttons/sliders pause automatically
     - [ ] space to play/pause, < > to speed down/up, esc to close top modal
@@ -114,6 +114,7 @@ A real-time-with-pauses, event-driven space colony sandbox survival strategy gam
     - [ ] preserve scroll state
     - [ ] UI should consume clicks
     - [ ] Scroll bars
+    - [ ] Empty progress bars should not be blue
     - [ ] text size based sizes, rather than raw pixels
     - [ ] collapsible sections, with caret
     - [ ] dont show porkchop plot until its needed

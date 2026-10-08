@@ -23,11 +23,11 @@ pub fn transfer_rate(r: Resource) -> f32 {
     const LOX_KG_PER_L: f32 = 1.141;
     const LH2_KG_PER_L: f32 = 0.071;
 
-    const KG_P_S: f32 = 0.03;
+    const KG_P_S: f32 = 0.001;
 
     match r {
         // measured in W
-        Resource::Energy => 10_000.0,
+        Resource::Energy => 10.0,
 
         // measured in kg/s, approx. 1 L/s for each resource
         Resource::Water => KG_P_S * 1.0,
